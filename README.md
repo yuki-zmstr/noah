@@ -61,11 +61,20 @@ noah-reading-agent/
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and configure:
+For detailed setup instructions, see [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
 
-- Database connections
-- AWS credentials
-- API keys (Amazon Product API, etc.)
+**Quick start for development:**
+
+1. Copy `.env.example` to `.env` and `frontend/.env.example` to `frontend/.env`
+2. Generate JWT secrets: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+3. Update the JWT_SECRET and SESSION_SECRET in your `.env` file
+4. Other variables are pre-configured for Docker development
+
+**Required for production:**
+
+- AWS credentials for Bedrock Agent
+- Database URLs for production databases
+- API keys for Amazon Product API and Google Search API
 
 ## Testing
 
