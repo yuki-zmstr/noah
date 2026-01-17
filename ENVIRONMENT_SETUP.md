@@ -14,7 +14,6 @@ For local development, you can start with minimal configuration:
    ```
 
 2. **Required for basic functionality:**
-
    - Generate JWT secrets (see Security section below)
    - The database URLs are pre-configured for Docker development setup
 
@@ -87,7 +86,6 @@ AWS_SECRET_ACCESS_KEY=your-secret-key
 1. **Create AWS Account:** [aws.amazon.com](https://aws.amazon.com)
 
 2. **Create IAM User:**
-
    - Go to AWS Console → IAM → Users → Create User
    - Attach policies: `AmazonBedrockFullAccess`, `AmazonS3FullAccess`
    - Create access key in Security Credentials tab
@@ -109,12 +107,10 @@ BEDROCK_KNOWLEDGE_BASE_ID=your-kb-id
 **How to get Bedrock Agent credentials:**
 
 1. **Enable Bedrock in AWS Console:**
-
    - Go to AWS Bedrock service
    - Request access to Claude/other models if needed
 
 2. **Create Bedrock Agent:**
-
    - Go to Bedrock → Agents → Create Agent
    - Configure with your instructions and knowledge base
    - Note the Agent ID and Alias ID
@@ -139,7 +135,6 @@ AMAZON_ASSOCIATE_TAG=your-associate-tag
 **How to get Amazon Product API access:**
 
 1. **Join Amazon Associates Program:**
-
    - Go to [associates.amazon.com](https://associates.amazon.com)
    - Create account and get approved
    - Note your Associate Tag (e.g., `yoursite-20`)
@@ -164,17 +159,14 @@ GOOGLE_SEARCH_ENGINE_ID=your-engine-id
 **How to get Google Search API access:**
 
 1. **Create Google Cloud Project:**
-
    - Go to [console.cloud.google.com](https://console.cloud.google.com)
    - Create new project or select existing
 
 2. **Enable Custom Search API:**
-
    - Go to APIs & Services → Library
    - Search for "Custom Search API" and enable it
 
 3. **Create API Key:**
-
    - Go to APIs & Services → Credentials
    - Create API Key and restrict it to Custom Search API
 
@@ -252,7 +244,6 @@ In `frontend/.env`:
 
 ```bash
 VITE_API_BASE_URL=http://localhost:8000/api
-VITE_SOCKET_URL=http://localhost:8000
 VITE_ENABLE_DISCOVERY_MODE=true
 VITE_ENABLE_MULTILINGUAL=true
 VITE_ENABLE_PURCHASE_LINKS=true
@@ -305,17 +296,14 @@ LOG_LEVEL=warn
 ### Common Issues
 
 1. **Database connection errors:**
-
    - Ensure Docker containers are running: `docker compose ps`
    - Check DATABASE_URL format and credentials
 
 2. **AWS Bedrock access denied:**
-
    - Verify IAM permissions include Bedrock access
    - Check if model access is requested and approved
 
 3. **Amazon API errors:**
-
    - Verify Associate account is active
    - Check API key permissions and rate limits
 

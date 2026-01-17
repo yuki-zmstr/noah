@@ -9,7 +9,20 @@
           >
             <span class="text-white font-semibold text-sm">N</span>
           </div>
-          <h1 class="text-xl font-semibold text-gray-900">Noah</h1>
+          <div>
+            <h1 class="text-xl font-semibold text-gray-900">Noah</h1>
+            <div class="flex items-center space-x-2 text-xs">
+              <div
+                :class="[
+                  'w-2 h-2 rounded-full',
+                  isConnected ? 'bg-green-400' : 'bg-red-400',
+                ]"
+              ></div>
+              <span :class="isConnected ? 'text-green-600' : 'text-red-600'">
+                {{ isConnected ? "Connected" : "Disconnected" }}
+              </span>
+            </div>
+          </div>
         </div>
         <RouterLink to="/preferences" class="btn-secondary text-sm">
           Preferences
@@ -20,27 +33,384 @@
     <!-- Chat Container -->
     <div class="flex-1 flex flex-col max-w-4xl mx-auto w-full">
       <!-- Messages Area -->
-      <div class="flex-1 overflow-y-auto p-4 space-y-4">
-        <div class="text-center text-gray-500 text-sm">
-          Start a conversation with Noah about books and reading!
+      <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- Welcome Message -->
+        <div
+          v-if="!hasMessages"
+          class="text-center text-gray-500 text-sm space-y-2"
+        >
+          <div>Start a conversation with Noah about books and reading!</div>
+          <div class="text-xs">
+            Try asking: "Can you recommend a good mystery novel?" or "I'm
+            feeling lucky!"
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <ChatMessage
+          v-for="message in sortedMessages"
+          :key="message.id"
+          :message="message"
+        />
+
+        <!-- Typing Indicator -->
+        <TypingIndicator :is-visible="isTyping" />
+
+        <!-- Loading Indicator -->
+        <div v-if="isLoading" class="flex justify-center">
+          <div
+            class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Error Message -->
+      <div
+        v-if="error"
+        class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mx-4"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-sm">{{ error }}</span>
+          <button @click="clearError" class="text-red-500 hover:text-red-700">
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
         </div>
       </div>
 
       <!-- Input Area -->
       <div class="border-t border-gray-200 bg-white p-4">
-        <div class="flex space-x-3">
+        <form @submit.prevent="sendMessage" class="flex space-x-3">
           <input
+            v-model="messageInput"
             type="text"
             placeholder="Ask Noah for book recommendations..."
-            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            :disabled="!isConnected || isLoading"
+            class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+            @keydown.enter.prevent="sendMessage"
           />
-          <button class="btn-primary">Send</button>
-        </div>
+          <button
+            type="submit"
+            :disabled="!messageInput.trim() || !isConnected || isLoading"
+            class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        </form>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, nextTick, watch } from "vue";
 import { RouterLink } from "vue-router";
+import { useChatStore } from "@/stores/chat";
+import { useWebSocket } from "@/composables/useWebSocket";
+import ChatMessage from "@/components/ChatMessage.vue";
+import TypingIndicator from "@/components/TypingIndicator.vue";
+import type { ChatMessage as ChatMessageType } from "@/types/chat";
+
+// Store and composables
+const chatStore = useChatStore();
+const {
+  isConnected,
+  connectionError,
+  sendMessage: sendWebSocketMessage,
+  onMessage,
+  onMessageChunk,
+  onRecommendations,
+  onPurchaseLinks,
+  onMessageComplete,
+  onTyping,
+  onConversationHistory,
+  joinSession,
+} = useWebSocket();
+
+// Reactive state
+const messageInput = ref("");
+const messagesContainer = ref<HTMLElement>();
+const isTyping = ref(false);
+const typingTimeout = ref<NodeJS.Timeout>();
+const currentStreamingMessage = ref<ChatMessageType | null>(null);
+
+// Computed properties from store
+const { sortedMessages, hasMessages, isLoading, error } = chatStore;
+
+// Mock user ID for development
+const userId = "user_" + Math.random().toString(36).substr(2, 9);
+
+// Methods
+const sendMessage = async () => {
+  const message = messageInput.trim();
+  if (!message || !isConnected.value) return;
+
+  // Add user message to store
+  chatStore.addUserMessage(message);
+  messageInput.value = "";
+
+  // Send via WebSocket
+  if (chatStore.currentSession) {
+    sendWebSocketMessage(message, chatStore.currentSession.sessionId);
+  }
+
+  // Scroll to bottom
+  await nextTick();
+  scrollToBottom();
+
+  // Simulate Noah's response for development (remove when backend is ready)
+  simulateNoahResponse(message);
+};
+
+const simulateNoahResponse = (userMessage: string) => {
+  // Show typing indicator
+  isTyping.value = true;
+
+  setTimeout(
+    () => {
+      isTyping.value = false;
+
+      // Generate mock response based on user message
+      let response = "I'd be happy to help you with that!";
+      let messageType: ChatMessageType["type"] = "text";
+      let metadata: ChatMessageType["metadata"] = undefined;
+
+      if (
+        userMessage.toLowerCase().includes("recommend") ||
+        userMessage.toLowerCase().includes("book")
+      ) {
+        response = "Here are some book recommendations I think you'd enjoy:";
+        messageType = "recommendation";
+        metadata = {
+          recommendations: [
+            {
+              id: "book_1",
+              title: "The Seven Husbands of Evelyn Hugo",
+              author: "Taylor Jenkins Reid",
+              description:
+                "A captivating novel about a reclusive Hollywood icon who finally decides to tell her story.",
+              interestScore: 0.92,
+              readingLevel: "Intermediate",
+              estimatedReadingTime: 420,
+            },
+            {
+              id: "book_2",
+              title: "Educated",
+              author: "Tara Westover",
+              description:
+                "A powerful memoir about education, family, and the struggle between loyalty and independence.",
+              interestScore: 0.88,
+              readingLevel: "Advanced",
+              estimatedReadingTime: 380,
+            },
+          ],
+        };
+      } else if (
+        userMessage.toLowerCase().includes("lucky") ||
+        userMessage.toLowerCase().includes("discover")
+      ) {
+        response =
+          "I'm feeling adventurous! Here's something completely different from your usual reads:";
+        messageType = "recommendation";
+        metadata = {
+          recommendations: [
+            {
+              id: "book_discovery",
+              title: "Klara and the Sun",
+              author: "Kazuo Ishiguro",
+              description:
+                "A thought-provoking story told from the perspective of an artificial friend.",
+              interestScore: 0.75,
+              readingLevel: "Intermediate",
+              estimatedReadingTime: 300,
+            },
+          ],
+        };
+      } else if (
+        userMessage.toLowerCase().includes("buy") ||
+        userMessage.toLowerCase().includes("purchase")
+      ) {
+        response = "Here are some places where you can find this book:";
+        messageType = "purchase_links";
+        metadata = {
+          purchaseLinks: [
+            {
+              id: "amazon_link",
+              type: "amazon",
+              url: "https://amazon.com/example",
+              displayText: "Buy on Amazon",
+              format: "physical",
+              price: "$14.99",
+              availability: "available",
+            },
+            {
+              id: "search_link",
+              type: "web_search",
+              url: "https://google.com/search?q=book+title",
+              displayText: "Search for more options",
+              availability: "unknown",
+            },
+          ],
+        };
+      }
+
+      chatStore.addNoahMessage(response, messageType, metadata);
+
+      // Scroll to bottom after adding message
+      nextTick(() => scrollToBottom());
+    },
+    1500 + Math.random() * 1000,
+  ); // Random delay between 1.5-2.5 seconds
+};
+
+const scrollToBottom = () => {
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+  }
+};
+
+const clearError = () => {
+  chatStore.setError(null);
+};
+
+// WebSocket event handlers
+onMessage((message: ChatMessageType) => {
+  chatStore.addMessage(message);
+  nextTick(() => scrollToBottom());
+});
+
+// Handle streaming message chunks
+onMessageChunk((chunk) => {
+  if (!currentStreamingMessage.value) {
+    // Start a new streaming message
+    currentStreamingMessage.value = chatStore.addStreamingMessage(
+      chunk.content,
+    );
+  } else {
+    // Update existing streaming message
+    chatStore.updateStreamingMessage(
+      currentStreamingMessage.value.id,
+      chunk.content,
+    );
+  }
+
+  nextTick(() => scrollToBottom());
+});
+
+// Handle recommendations
+onRecommendations((data) => {
+  if (currentStreamingMessage.value) {
+    const messageType = data.is_discovery ? "recommendation" : "recommendation";
+    chatStore.updateStreamingMessage(
+      currentStreamingMessage.value.id,
+      currentStreamingMessage.value.content,
+      { recommendations: data.recommendations },
+    );
+    // Update message type
+    const messageIndex = chatStore.messages.findIndex(
+      (msg) => msg.id === currentStreamingMessage.value?.id,
+    );
+    if (messageIndex !== -1) {
+      chatStore.messages[messageIndex].type = messageType;
+    }
+  }
+  nextTick(() => scrollToBottom());
+});
+
+// Handle purchase links
+onPurchaseLinks((data) => {
+  if (currentStreamingMessage.value) {
+    chatStore.updateStreamingMessage(
+      currentStreamingMessage.value.id,
+      currentStreamingMessage.value.content,
+      { purchaseLinks: data.purchase_links },
+    );
+    // Update message type
+    const messageIndex = chatStore.messages.findIndex(
+      (msg) => msg.id === currentStreamingMessage.value?.id,
+    );
+    if (messageIndex !== -1) {
+      chatStore.messages[messageIndex].type = "purchase_links";
+    }
+  }
+  nextTick(() => scrollToBottom());
+});
+
+// Handle message completion
+onMessageComplete((data) => {
+  if (currentStreamingMessage.value) {
+    chatStore.finalizeStreamingMessage(
+      currentStreamingMessage.value.id,
+      currentStreamingMessage.value.content,
+    );
+    currentStreamingMessage.value = null;
+  }
+  nextTick(() => scrollToBottom());
+});
+
+// Handle conversation history
+onConversationHistory((data) => {
+  // Load historical messages
+  data.messages.forEach((msg) => {
+    chatStore.addMessage({
+      id: msg.message_id || `msg_${Date.now()}_${Math.random()}`,
+      content: msg.content,
+      sender: msg.sender as "user" | "noah",
+      timestamp: new Date(msg.timestamp),
+      type: (msg.type as ChatMessageType["type"]) || "text",
+      metadata: msg.metadata,
+    });
+  });
+  nextTick(() => scrollToBottom());
+});
+
+onTyping((typing) => {
+  isTyping.value = typing.isTyping;
+
+  if (typing.isTyping) {
+    // Clear existing timeout
+    if (typingTimeout.value) {
+      clearTimeout(typingTimeout.value);
+    }
+
+    // Set timeout to hide typing indicator
+    typingTimeout.value = setTimeout(() => {
+      isTyping.value = false;
+    }, 5000);
+  }
+});
+
+// Watch for connection errors
+watch(connectionError, (error) => {
+  if (error) {
+    chatStore.setError(`Connection error: ${error}`);
+  }
+});
+
+// Initialize on mount
+onMounted(() => {
+  chatStore.initializeSession(userId);
+
+  // Join WebSocket session when connected
+  watch(
+    isConnected,
+    (connected) => {
+      if (connected && chatStore.currentSession) {
+        joinSession(chatStore.currentSession.sessionId, userId);
+      }
+    },
+    { immediate: true },
+  );
+});
 </script>

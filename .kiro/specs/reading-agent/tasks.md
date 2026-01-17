@@ -32,14 +32,14 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Integrate AWS Agent Core for agent orchestration and state management
     - _Requirements: 2.1, 9.1, 10.1, 11.1_
 
-- [ ] 3. Build conversational chatbot interface
-  - [ ] 3.1 Create Vue.js chat component with message history
+- [x] 3. Build conversational chatbot interface
+  - [x] 3.1 Create Vue.js chat component with message history
     - Build responsive chat interface with message bubbles and typing indicators
     - Implement real-time messaging with WebSocket connection
     - Add support for rich content display (book recommendations, purchase links)
     - _Requirements: 10.1, 10.2, 10.4_
 
-  - [ ] 3.2 Implement natural language understanding with AWS Agent Core and FastAPI
+  - [x] 3.2 Implement natural language understanding with AWS Agent Core and FastAPI
     - Integrate AWS Agent Core for intent classification and NLU capabilities
     - Build entity extraction for book titles, authors, genres, and preferences using Agent Core
     - Add conversation context management and session state tracking with FastAPI

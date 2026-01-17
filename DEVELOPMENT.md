@@ -13,16 +13,15 @@ noah-reading-agent/
 │   │   └── utils/         # Utility functions
 │   ├── public/            # Static assets
 │   └── dist/              # Build output
-├── backend/               # Node.js backend with Strands agent
+├── python-backend/        # Python FastAPI backend
 │   ├── src/
-│   │   ├── routes/        # Express route handlers
-│   │   ├── socket/        # Socket.IO handlers
+│   │   ├── api/           # FastAPI route handlers
+│   │   ├── models/        # SQLAlchemy models
+│   │   ├── schemas/       # Pydantic schemas
 │   │   ├── services/      # Business logic services
-│   │   ├── models/        # Data models
-│   │   ├── middleware/    # Express middleware
-│   │   ├── utils/         # Utility functions
-│   │   └── types/         # TypeScript type definitions
-│   └── dist/              # Build output
+│   │   └── config.py      # Configuration
+│   ├── tests/             # Test files
+│   └── requirements.txt   # Python dependencies
 ├── infrastructure/        # AWS CDK infrastructure code
 │   ├── lib/               # CDK stack definitions
 │   ├── bin/               # CDK app entry point
@@ -43,20 +42,19 @@ noah-reading-agent/
 - **Vite** for build tooling
 - **Pinia** for state management
 - **Vue Router** for navigation
-- **Socket.IO Client** for real-time communication
 - **Vitest** for testing
 
 ### Backend
 
-- **Node.js** with Express.js
-- **TypeScript** for type safety
-- **Socket.IO** for real-time communication
+- **Python 3.9+** with FastAPI
+- **SQLAlchemy** for ORM
+- **Pydantic** for data validation
 - **AWS Agent Core** for agent orchestration
 - **PostgreSQL** for user data storage
 - **Redis** for caching and sessions
 - **OpenSearch** for vector similarity search
-- **Winston** for logging
-- **Vitest** for testing
+- **Uvicorn** for ASGI server
+- **Pytest** for testing
 
 ### Infrastructure
 
@@ -112,7 +110,7 @@ If you prefer to set up manually:
    ```bash
    npm install
    cd frontend && npm install && cd ..
-   cd backend && npm install && cd ..
+   cd python-backend && pip install -r requirements.txt && cd ..
    cd infrastructure && npm install && cd ..
    ```
 
@@ -137,7 +135,7 @@ If you prefer to set up manually:
    cd frontend && npm run dev
 
    # Terminal 2: Backend
-   cd backend && npm run dev
+   cd python-backend && python -m uvicorn src.main:app --reload
    ```
 
 ## Environment Configuration
@@ -158,7 +156,6 @@ Key environment variables for the backend (see `.env.example`):
 Key environment variables for the frontend (see `frontend/.env.example`):
 
 - `VITE_API_BASE_URL` - Backend API base URL
-- `VITE_SOCKET_URL` - Socket.IO server URL
 - `VITE_ENABLE_DISCOVERY_MODE` - Enable discovery mode feature
 - `VITE_ENABLE_MULTILINGUAL` - Enable multilingual support
 
@@ -174,11 +171,11 @@ npm test
 npm run test:frontend
 
 # Run backend tests
-npm run test:backend
+cd python-backend && python -m pytest
 
 # Run tests in watch mode
 cd frontend && npm run test:watch
-cd backend && npm run test:watch
+cd python-backend && python -m pytest --watch
 ```
 
 ### Code Quality
@@ -186,11 +183,11 @@ cd backend && npm run test:watch
 ```bash
 # Lint code
 cd frontend && npm run lint
-cd backend && npm run lint
+cd python-backend && black src/ && isort src/
 
 # Type checking
 cd frontend && npm run type-check
-cd backend && npm run build
+cd python-backend && mypy src/
 ```
 
 ### Database Management
@@ -215,7 +212,7 @@ npm run build
 
 # Build individual components
 npm run build:frontend
-npm run build:backend
+cd python-backend && python -m build
 ```
 
 ## Deployment
@@ -252,8 +249,8 @@ npm run build:backend
 ### Data Flow
 
 1. **User Interaction**: User sends message through Vue.js frontend
-2. **Real-time Communication**: Message sent via Socket.IO to backend
-3. **Agent Processing**: Strands agent with AWS Agent Core processes the message
+2. **API Communication**: Message sent via HTTP API to Python FastAPI backend
+3. **Agent Processing**: AWS Agent Core processes the message with conversation context
 4. **Content Analysis**: Content processor analyzes and scores potential recommendations
 5. **Recommendation Generation**: Recommendation engine generates personalized suggestions
 6. **Response Delivery**: Noah responds with recommendations and explanations
@@ -272,19 +269,12 @@ npm run build:backend
 
 ### REST Endpoints
 
-- `GET /api/profile/:userId` - Get user profile
-- `PUT /api/profile/:userId/preferences` - Update user preferences
-- `GET /api/content/recommendations/:userId` - Get content recommendations
-- `POST /api/content/analyze` - Analyze content
-- `GET /api/conversation/history/:userId` - Get conversation history
-
-### Socket.IO Events
-
-- `join` - User joins their room
-- `chat_message` - User sends a message
-- `noah_response` - Noah's response to user
-- `feedback` - User provides feedback
-- `feedback_received` - Feedback acknowledgment
+- `GET /api/v1/users/{user_id}` - Get user profile
+- `PUT /api/v1/users/{user_id}` - Update user preferences
+- `GET /api/v1/content/recommendations/{user_id}` - Get content recommendations
+- `POST /api/v1/content/analyze` - Analyze content
+- `GET /api/v1/conversations/sessions/{session_id}/messages` - Get conversation history
+- `POST /api/v1/conversations/messages` - Send message to agent
 
 ## Troubleshooting
 
@@ -297,7 +287,7 @@ npm run build:backend
 
 ### Debugging
 
-- Check logs in `backend/logs/` directory
+- Check logs in `python-backend/logs/` directory or console output
 - Use browser developer tools for frontend debugging
 - Monitor Docker container logs: `docker compose logs -f`
 - Check database connectivity: `docker compose exec postgres psql -U noah_user -d noah_dev`

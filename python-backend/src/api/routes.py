@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from .endpoints import users, content, conversations, recommendations
+from .endpoints import users, content, conversations, recommendations, websocket
 
 # Create main API router
 api_router = APIRouter()
@@ -14,3 +14,4 @@ api_router.include_router(conversations.router,
                           prefix="/conversations", tags=["conversations"])
 api_router.include_router(recommendations.router,
                           prefix="/recommendations", tags=["recommendations"])
+api_router.include_router(websocket.router, prefix="/chat", tags=["websocket"])

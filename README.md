@@ -5,7 +5,7 @@ A personalized reading agent system that learns and adapts to user reading inter
 ## Architecture
 
 - **Frontend**: Vue.js 3 with TypeScript and Tailwind CSS
-- **Backend**: Strands agent with AWS Agent Core integration
+- **Backend**: Python FastAPI with AWS Agent Core integration
 - **Infrastructure**: AWS CDK for cloud deployment
 - **Databases**: PostgreSQL for user profiles, Vector DB for content embeddings
 
@@ -53,7 +53,7 @@ npm run dev
 ```
 noah-reading-agent/
 ├── frontend/          # Vue.js frontend application
-├── backend/           # Strands agent backend
+├── python-backend/    # Python FastAPI backend
 ├── infrastructure/    # AWS CDK infrastructure code
 ├── docker-compose.yml # Development databases
 └── README.md
@@ -88,7 +88,7 @@ Run specific test suites:
 
 ```bash
 npm run test:frontend
-npm run test:backend
+cd python-backend && python -m pytest
 ```
 
 ## Deployment

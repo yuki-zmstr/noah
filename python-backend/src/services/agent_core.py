@@ -134,13 +134,8 @@ class AgentCoreService:
         """Fallback intent analysis when AWS Agent Core is unavailable."""
         message_lower = message.lower()
 
-        if any(word in message_lower for word in ["recommend", "suggest", "book", "read"]):
-            return {
-                "intent": "book_recommendation",
-                "confidence": 0.7,
-                "entities": {}
-            }
-        elif any(word in message_lower for word in ["buy", "purchase", "get", "order"]):
+        # Check for purchase intent first (more specific)
+        if any(word in message_lower for word in ["buy", "purchase", "get", "order", "where can i"]):
             return {
                 "intent": "purchase_inquiry",
                 "confidence": 0.7,
@@ -149,6 +144,12 @@ class AgentCoreService:
         elif any(word in message_lower for word in ["surprise", "lucky", "discover", "new"]):
             return {
                 "intent": "discovery_mode",
+                "confidence": 0.7,
+                "entities": {}
+            }
+        elif any(word in message_lower for word in ["recommend", "suggest", "book", "read"]):
+            return {
+                "intent": "book_recommendation",
                 "confidence": 0.7,
                 "entities": {}
             }
