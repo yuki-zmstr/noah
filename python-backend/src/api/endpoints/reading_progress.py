@@ -267,3 +267,89 @@ async def get_difficulty_recommendations(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get difficulty recommendations: {str(e)}")
+
+
+@router.get("/users/{user_id}/skill-progression")
+async def get_skill_progression(
+    user_id: str,
+    content_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get skill progression analysis for a user."""
+    try:
+        if not content_id:
+            # Get the most recent content
+            from src.models.user_profile import ReadingBehavior
+            from sqlalchemy import desc
+
+            recent_behavior = db.query(ReadingBehavior).filter(
+                ReadingBehavior.user_id == user_id,
+                ReadingBehavior.end_time.isnot(None)
+            ).order_by(desc(ReadingBehavior.created_at)).first()
+
+            if not recent_behavior:
+                raise HTTPException(
+                    status_code=404, detail="No completed sessions found")
+            content_id = recent_behavior.content_id
+
+        # Calculate performance data from recent session
+        # This would come from actual session analysis
+        performance_data = {"performance_score": 0.7}
+
+        progression = await reading_progress_tracker.assess_skill_progression(
+            user_id, content_id, performance_data, db
+        )
+
+        return {
+            "success": True,
+            "data": progression
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get skill progression: {str(e)}")
+
+
+@router.get("/users/{user_id}/learning-path")
+async def get_learning_path(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get personalized learning path for a user."""
+    try:
+        learning_path = await reading_progress_tracker.generate_personalized_learning_path(user_id, db)
+
+        return {
+            "success": True,
+            "data": learning_path
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate learning path: {str(e)}")
+
+
+@router.post("/users/{user_id}/difficulty-adjustment")
+async def track_difficulty_adjustment(
+    user_id: str,
+    adjustment_data: Dict,
+    db: Session = Depends(get_db)
+):
+    """Track an adaptive difficulty adjustment."""
+    try:
+        await reading_progress_tracker.track_adaptive_difficulty_adjustment(
+            user_id=user_id,
+            content_id=adjustment_data["content_id"],
+            original_difficulty=adjustment_data["original_difficulty"],
+            adjusted_difficulty=adjustment_data["adjusted_difficulty"],
+            adjustment_reason=adjustment_data["reason"],
+            db=db
+        )
+
+        return {
+            "success": True,
+            "message": "Difficulty adjustment tracked successfully"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to track difficulty adjustment: {str(e)}")

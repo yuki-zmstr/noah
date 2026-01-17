@@ -2,7 +2,8 @@
 
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
+from src.schemas.user_profile import ReadingContext
 
 
 class ReadingBehaviorCreate(BaseModel):
@@ -43,7 +44,7 @@ class PreferenceSnapshotCreate(BaseModel):
     user_id: str
     topic_weights: Dict[str, float]
     reading_level_preference: float
-    contextual_factors: Dict[str, any]
+    contextual_factors: Dict[str, Any]
     confidence_score: float
 
 
@@ -54,7 +55,7 @@ class PreferenceSnapshotResponse(BaseModel):
     timestamp: datetime
     topic_weights: Dict[str, float]
     reading_level_preference: float
-    contextual_factors: Dict[str, any]
+    contextual_factors: Dict[str, Any]
     confidence_score: float
 
     class Config:

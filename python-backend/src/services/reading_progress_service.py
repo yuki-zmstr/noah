@@ -1,6 +1,7 @@
 """Reading progress tracking service with adaptive difficulty adjustment."""
 
 import logging
+import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -83,7 +84,7 @@ class ReadingProgressTracker:
         ).first()
 
         if not behavior:
-            raise ValueError(f"Reading session {sess_id} not found")
+            raise ValueError(f"Reading session {session_id} not found")
 
         # Update behavioral metrics
         updated_metrics = self._update_behavioral_metrics(
@@ -118,7 +119,7 @@ class ReadingProgressTracker:
             )
         }
 
-    async def complete_reading_session(self, session_id: str, : Dict,
+    async def complete_reading_session(self, session_id: str, completion_data: Dict,
                                        db: Session) -> Dict:
         """Complete a reading session and perform comprehensive analysis."""
         behavior = db.query(ReadingBehavior).filter(
@@ -130,20 +131,21 @@ class ReadingProgressTracker:
 
         # Update final metrics
         behavior.end_time = datetime.utcnow()
-        behavior.completion_rate = completion_data.g", 0.0)
-        
+        behavior.completion_rate = completion_data.get("completion_rate", 0.0)
+
         # Calculate session duration
-        session_duration = (behavior.end_time - behavior.start_time).total_seconds() / 60
-        
+        session_duration = (behavior.end_time -
+                            behavior.start_time).total_seconds() / 60
+
         # Perform comprehensive session analysis
         session_analysis = await self._analyze_completed_session(behavior, db)
-        
+
         # Update user reading level based on performance
-rom_session(behavior, session_analysis, db)
-        
+        await self._update_reading_level_from_session(behavior, session_analysis, db)
+
         # Generate skill development insights
         skill_insights = await self._generate_skill_development_insights(behavior.user_id, db)
-        
+
         # Update adaptive difficulty recommendations
         difficulty_recommendations = await self._update_difficulty_recommendations(
             behavior.user_id, session_analysis, db
@@ -153,7 +155,7 @@ rom_session(behavior, session_analysis, db)
 
         completion_summary = {
             "session_id": session_id,
-         tion_minutes": session_duration,
+            "session_duration_minutes": session_duration,
             "completion_rate": behavior.completion_rate,
             "session_analysis": session_analysis,
             "skill_insights": skill_insights,
@@ -163,14 +165,15 @@ rom_session(behavior, session_analysis, db)
             )
         }
 
-        logger.info(f"Completed reading session {session_id} for user {behavior.user_id}")
+        logger.info(
+            f"Completed reading session {session_id} for user {behavior.user_id}")
         return completion_summary
 
     async def get_progress_analytics(self, user_id: str, time_period_days: int,
                                      db: Session) -> Dict:
         """Get comprehensive progress analytics for a user."""
         cutoff_date = datetime.utcnow() - timedelta(days=time_period_days)
-        
+
         # Get reading behaviors in the time period
         behaviors = db.query(ReadingBehavior).filter(
             and_(
@@ -184,13 +187,13 @@ rom_session(behavior, session_analysis, db)
 
         # Calculate progress metrics
         progress_metrics = self._calculate_progress_metrics(behaviors)
-        
+
         # Analyze skill development trends
         skill_trends = self._analyze_skill_development_trends(behaviors)
-        
+
         # Generate adaptive difficulty insights
         difficulty_insights = await self._generate_difficulty_insights(user_id, behaviors, db)
-        
+
         # Calculate behavioral patterns
         behavioral_patterns = self._analyze_behavioral_patterns(behaviors)
 
@@ -200,7 +203,7 @@ rom_session(behavior, session_analysis, db)
             "total_sessions": len(behaviors),
             "progress_metrics": progress_metrics,
             "skill_development_trends": skill_trends,
-            "difficulty_insights": difficulty_its,
+            "difficulty_insights": difficulty_insights,
             "behavioral_patterns": behavioral_patterns,
             "recommendations": await self._generate_progress_recommendations(
                 user_id, progress_metrics, skill_trends, db
@@ -217,16 +220,18 @@ rom_session(behavior, session_analysis, db)
 
         content_analysis = content.analysis
         reading_levels = profile.reading_levels
-        
+
         # Determine content language
         content_language = content.language or "english"
-        
+
         if content_language == "english":
             user_level = reading_levels.get("english", {}).get("level", 8.0)
-            content_difficulty = content_analysis.get("reading_level", {}).get("flesch_kincaid", 8.0)
+            content_difficulty = content_analysis.get(
+                "reading_level", {}).get("flesch_kincaid", 8.0)
         elif content_language == "japanese":
             user_level = reading_levels.get("japanese", {}).get("level", 0.3)
-            content_difficulty = content_analysis.get("reading_level", {}).get("kanji_density", 0.3)
+            content_difficulty = content_analysis.get(
+                "reading_level", {}).get("kanji_density", 0.3)
         else:
             return {"assessment": "unsupported_language", "confidence": 0.0}
 
@@ -234,7 +239,7 @@ rom_session(behavior, session_analysis, db)
         if content_language == "english":
             difficulty_ratio = content_difficulty / max(user_level, 1.0)
         else:  # Japanese
-ifficulty / max(user_level, 0.1)
+            difficulty_ratio = content_difficulty / max(user_level, 0.1)
 
         # Determine assessment
         if difficulty_ratio < 0.8:
@@ -257,12 +262,12 @@ ifficulty / max(user_level, 0.1)
                 context_adjustment += 0.1
 
         adjusted_ratio = difficulty_ratio + context_adjustment
-        
+
         return {
             "assessment": assessment,
             "difficulty_ratio": difficulty_ratio,
             "adjusted_ratio": adjusted_ratio,
-            "content_level": conte,
+            "content_level": content_difficulty,
             "user_level": user_level,
             "language": content_language,
             "confidence": reading_levels.get(content_language, {}).get("confidence", 0.5)
@@ -272,9 +277,9 @@ ifficulty / max(user_level, 0.1)
                                        difficulty_assessment: Dict) -> List[Dict]:
         """Generate adaptive suggestions based on difficulty assessment."""
         suggestions = []
-        
-ent", "unknown")
-        
+
+        assessment = difficulty_assessment.get("assessment", "unknown")
+
         if assessment == "too_difficult":
             suggestions.extend([
                 {
@@ -299,7 +304,7 @@ ent", "unknown")
         elif assessment == "challenging":
             suggestions.append({
                 "type": "optimal_challenge",
-                "suggestion": "This content is y level for skill development",
+                "suggestion": "This content is at an optimal difficulty level for skill development",
                 "priority": "info"
             })
 
@@ -321,13 +326,13 @@ ent", "unknown")
             }
         }
 
-    def _update_behavioral_metrics(self, behavior: ReadingBehavior, 
+    def _update_behavioral_metrics(self, behavior: ReadingBehavior,
                                    progress_data: Dict) -> Dict:
         """Update behavioral metrics with new progress data."""
         current_metrics = {
             "pause_patterns": behavior.pause_patterns or [],
             "interactions": behavior.interactions or [],
-            "es": {}
+            "engagement_metrics": {}
         }
 
         # Update pause patterns
@@ -350,7 +355,7 @@ ent", "unknown")
 
         # Calculate current reading speed
         if "words_read" in progress_data and "time_elapsed" in progress_data:
-            time_minutes = _data["time_elapsed"] / 60
+            time_minutes = progress_data["time_elapsed"] / 60
             if time_minutes > 0:
                 current_metrics["current_reading_speed"] = progress_data["words_read"] / time_minutes
 
@@ -376,12 +381,13 @@ ent", "unknown")
         # Comprehension indicator (based on pause patterns and interactions)
         pause_count = len(metrics.get("pause_patterns", []))
         interaction_count = len(metrics.get("interactions", []))
-        
+
         # More pauses might indicate difficulty, but some pauses are normal
         pause_score = max(0.0, 1.0 - (pause_count / 20))
         interaction_score = min(1.0, interaction_count / 5)
-        
-        indicators["comprehension_estimate"] = (pause_score + interaction_score) / 2
+
+        indicators["comprehension_estimate"] = (
+            pause_score + interaction_score) / 2
 
         # Overall performance score
         completion_rate = progress_data.get("completion_rate", 0.0)
@@ -397,7 +403,7 @@ ent", "unknown")
                                           db: Session) -> List[Dict]:
         """Check if adaptive adjustments are needed based on performance."""
         adjustments = []
-        
+
         overall_performance = performance_ind
         # Comprehension indicator (based on pause patterns and interactions)
         pause_count = len(metrics.get("pause_patterns", []))
@@ -1082,8 +1088,452 @@ ent", "unknown")
 
         return patterns
 
+    async def assess_skill_progression(self, user_id: str, content_id: str,
+                                       performance_data: Dict, db: Session) -> Dict:
+        """Assess skill progression and recommend next difficulty level."""
+        # Get user's recent performance in this topic/language
+        content = db.query(ContentItem).filter(
+            ContentItem.id == content_id).first()
+        if not content:
+            return {"error": "Content not found"}
+
+        content_language = content.language or "english"
+        content_topics = content.analysis.get(
+            "topics", []) if content.analysis else []
+
+        # Get recent behaviors for this user in similar content
+        cutoff_date = datetime.utcnow() - timedelta(days=self.skill_development_window_days)
+        recent_behaviors = db.query(ReadingBehavior).filter(
+            and_(
+                ReadingBehavior.user_id == user_id,
+                ReadingBehavior.created_at >= cutoff_date,
+                ReadingBehavior.end_time.isnot(None)
+            )
+        ).order_by(ReadingBehavior.created_at).all()
+
+        # Filter behaviors by language and similar topics
+        relevant_behaviors = []
+        for behavior in recent_behaviors:
+            behavior_content = db.query(ContentItem).filter(
+                ContentItem.id == behavior.content_id).first()
+            if behavior_content and behavior_content.language == content_language:
+                relevant_behaviors.append(behavior)
+
+        if len(relevant_behaviors) < 2:
+            return {
+                "progression_status": "insufficient_data",
+                "recommendation": "continue_current_level",
+                "reason": "Need more reading sessions to assess progression"
+            }
+
+        # Analyze performance trends
+        performance_scores = []
+        difficulty_levels = []
+
+        for behavior in relevant_behaviors:
+            if behavior.completion_rate is not None and behavior.reading_speed:
+                # Calculate performance score for this session
+                performance_score = self._calculate_session_performance_score(
+                    behavior)
+                performance_scores.append(performance_score)
+
+                # Get content difficulty
+                behavior_content = db.query(ContentItem).filter(
+                    ContentItem.id == behavior.content_id).first()
+                if behavior_content and behavior_content.analysis:
+                    if content_language == "english":
+                        difficulty = behavior_content.analysis.get(
+                            "reading_level", {}).get("flesch_kincaid", 8.0)
+                    else:
+                        difficulty = behavior_content.analysis.get(
+                            "reading_level", {}).get("kanji_density", 0.3)
+                    difficulty_levels.append(difficulty)
+
+        if not performance_scores:
+            return {
+                "progression_status": "insufficient_data",
+                "recommendation": "continue_current_level"
+            }
+
+        # Calculate trends
+        performance_trend = self._calculate_trend(performance_scores)
+        difficulty_trend = self._calculate_trend(
+            difficulty_levels) if difficulty_levels else {"trend": "stable"}
+
+        # Determine progression recommendation
+        current_performance = performance_data.get(
+            "performance_score", performance_scores[-1])
+
+        progression_assessment = {
+            "progression_status": self._assess_progression_status(performance_trend, difficulty_trend),
+            "current_performance": current_performance,
+            "performance_trend": performance_trend,
+            "difficulty_trend": difficulty_trend,
+            "recommendation": self._generate_progression_recommendation(
+                performance_trend, difficulty_trend, current_performance
+            ),
+            "confidence": self._calculate_progression_confidence(performance_scores, difficulty_levels)
+        }
+
+        return progression_assessment
+
+    def _assess_progression_status(self, performance_trend: Dict, difficulty_trend: Dict) -> str:
+        """Assess overall skill progression status."""
+        perf_trend = performance_trend.get("trend", "stable")
+        diff_trend = difficulty_trend.get("trend", "stable")
+
+        if perf_trend == "improving" and diff_trend == "improving":
+            return "excellent_progression"
+        elif perf_trend == "improving":
+            return "performance_improving"
+        elif diff_trend == "improving" and perf_trend == "stable":
+            return "handling_increased_difficulty"
+        elif perf_trend == "declining":
+            return "struggling"
+        else:
+            return "stable"
+
+    def _generate_progression_recommendation(self, performance_trend: Dict,
+                                             difficulty_trend: Dict, current_performance: float) -> Dict:
+        """Generate specific progression recommendations."""
+        perf_trend = performance_trend.get("trend", "stable")
+
+        if current_performance > self.difficulty_adjustment_threshold and perf_trend == "improving":
+            return {
+                "action": "increase_difficulty",
+                "reason": "Strong performance with improving trend indicates readiness for challenge",
+                "suggested_increase": "moderate"
+            }
+        elif current_performance < self.struggle_threshold:
+            return {
+                "action": "decrease_difficulty",
+                "reason": "Performance below threshold indicates current level is too challenging",
+                "suggested_decrease": "significant"
+            }
+        elif perf_trend == "declining":
+            return {
+                "action": "stabilize_difficulty",
+                "reason": "Declining performance suggests need to consolidate current skills",
+                "suggested_action": "practice_current_level"
+            }
+        else:
+            return {
+                "action": "maintain_difficulty",
+                "reason": "Performance is stable and appropriate for current level",
+                "suggested_action": "continue_current_level"
+            }
+
+    def _calculate_progression_confidence(self, performance_scores: List[float],
+                                          difficulty_levels: List[float]) -> float:
+        """Calculate confidence in progression assessment."""
+        if len(performance_scores) < 3:
+            return 0.3  # Low confidence with few data points
+        elif len(performance_scores) < 5:
+            return 0.6  # Medium confidence
+        else:
+            # High confidence with sufficient data
+            # Factor in consistency of performance
+            performance_std = np.std(performance_scores) if len(
+                performance_scores) > 1 else 0
+            # Lower std = higher consistency
+            consistency_factor = max(0.5, 1.0 - performance_std)
+            return min(0.9, 0.7 + (consistency_factor * 0.2))
+
+    async def track_adaptive_difficulty_adjustment(self, user_id: str, content_id: str,
+                                                   original_difficulty: float, adjusted_difficulty: float,
+                                                   adjustment_reason: str, db: Session) -> None:
+        """Track adaptive difficulty adjustments for learning analytics."""
+        # This could be stored in a separate table for analytics
+        # For now, we'll add it to the user's reading behavior context
+        adjustment_record = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "content_id": content_id,
+            "original_difficulty": original_difficulty,
+            "adjusted_difficulty": adjusted_difficulty,
+            "adjustment_reason": adjustment_reason,
+            "adjustment_magnitude": abs(adjusted_difficulty - original_difficulty)
+        }
+
+        # Store in user profile for analytics
+        profile = await user_profile_engine.get_or_create_profile(user_id, db)
+        if not hasattr(profile, 'difficulty_adjustments'):
+            profile.difficulty_adjustments = []
+
+        # Keep only recent adjustments (last 50)
+        if len(profile.difficulty_adjustments) >= 50:
+            profile.difficulty_adjustments = profile.difficulty_adjustments[-49:]
+
+        profile.difficulty_adjustments.append(adjustment_record)
+        db.commit()
+
+    async def generate_personalized_learning_path(self, user_id: str, db: Session) -> Dict:
+        """Generate a personalized learning path based on skill progression analysis."""
+        # Get user profile and recent performance
+        profile = await user_profile_engine.get_or_create_profile(user_id, db)
+
+        # Analyze performance across different languages and topics
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
+        recent_behaviors = db.query(ReadingBehavior).filter(
+            and_(
+                ReadingBehavior.user_id == user_id,
+                ReadingBehavior.created_at >= cutoff_date,
+                ReadingBehavior.end_time.isnot(None)
+            )
+        ).all()
+
+        if not recent_behaviors:
+            return {"message": "Insufficient data for learning path generation"}
+
+        # Group behaviors by language and topic
+        language_performance = defaultdict(list)
+        topic_performance = defaultdict(list)
+
+        for behavior in recent_behaviors:
+            content = db.query(ContentItem).filter(
+                ContentItem.id == behavior.content_id).first()
+            if content and behavior.completion_rate is not None:
+                language = content.language or "english"
+                language_performance[language].append({
+                    "performance": self._calculate_session_performance_score(behavior),
+                    "difficulty": self._extract_content_difficulty(content, language),
+                    "timestamp": behavior.created_at
+                })
+
+                # Extract topics
+                if content.analysis and "topics" in content.analysis:
+                    for topic_data in content.analysis["topics"]:
+                        topic = topic_data.get("topic", "general")
+                        topic_performance[topic].append({
+                            "performance": self._calculate_session_performance_score(behavior),
+                            "difficulty": self._extract_content_difficulty(content, language),
+                            "timestamp": behavior.created_at
+                        })
+
+        # Generate learning path recommendations
+        learning_path = {
+            "user_id": user_id,
+            "generated_at": datetime.utcnow().isoformat(),
+            "language_recommendations": self._generate_language_learning_recommendations(language_performance),
+            "topic_recommendations": self._generate_topic_learning_recommendations(topic_performance),
+            "overall_strategy": self._determine_overall_learning_strategy(language_performance, topic_performance),
+            "next_milestones": self._identify_learning_milestones(profile, language_performance, topic_performance)
+        }
+
+        return learning_path
+
+    def _extract_content_difficulty(self, content: ContentItem, language: str) -> float:
+        """Extract difficulty level from content analysis."""
+        if not content.analysis:
+            return 8.0 if language == "english" else 0.3
+
+        if language == "english":
+            return content.analysis.get("reading_level", {}).get("flesch_kincaid", 8.0)
+        else:
+            return content.analysis.get("reading_level", {}).get("kanji_density", 0.3)
+
+    def _generate_language_learning_recommendations(self, language_performance: Dict) -> Dict:
+        """Generate language-specific learning recommendations."""
+        recommendations = {}
+
+        for language, performances in language_performance.items():
+            if not performances:
+                continue
+
+            avg_performance = sum(p["performance"]
+                                  for p in performances) / len(performances)
+            recent_performances = sorted(
+                performances, key=lambda x: x["timestamp"])[-5:]
+            recent_avg = sum(p["performance"]
+                             for p in recent_performances) / len(recent_performances)
+
+            trend = "improving" if recent_avg > avg_performance else "stable" if abs(
+                recent_avg - avg_performance) < 0.1 else "declining"
+
+            if avg_performance > 0.8:
+                recommendation = "ready_for_advanced_content"
+            elif avg_performance > 0.6:
+                recommendation = "continue_intermediate_level"
+            else:
+                recommendation = "focus_on_fundamentals"
+
+            recommendations[language] = {
+                "average_performance": avg_performance,
+                "recent_trend": trend,
+                "recommendation": recommendation,
+                "sessions_analyzed": len(performances),
+                "suggested_difficulty_adjustment": self._suggest_difficulty_adjustment(avg_performance, trend)
+            }
+
+        return recommendations
+
+    def _generate_topic_learning_recommendations(self, topic_performance: Dict) -> Dict:
+        """Generate topic-specific learning recommendations."""
+        recommendations = {}
+
+        for topic, performances in topic_performance.items():
+            if len(performances) < 2:  # Need at least 2 sessions for meaningful analysis
+                continue
+
+            avg_performance = sum(p["performance"]
+                                  for p in performances) / len(performances)
+            performance_trend = self._calculate_trend(
+                [p["performance"] for p in performances])
+
+            if avg_performance > 0.8 and performance_trend.get("trend") == "improving":
+                recommendation = "explore_advanced_topics"
+            elif avg_performance > 0.6:
+                recommendation = "continue_current_depth"
+            else:
+                recommendation = "build_foundational_knowledge"
+
+            recommendations[topic] = {
+                "average_performance": avg_performance,
+                "trend": performance_trend,
+                "recommendation": recommendation,
+                "sessions_count": len(performances)
+            }
+
+        return recommendations
+
+    def _determine_overall_learning_strategy(self, language_performance: Dict, topic_performance: Dict) -> Dict:
+        """Determine overall learning strategy based on performance patterns."""
+        # Calculate overall performance across all languages and topics
+        all_performances = []
+        for lang_perfs in language_performance.values():
+            all_performances.extend([p["performance"] for p in lang_perfs])
+
+        if not all_performances:
+            return {"strategy": "insufficient_data"}
+
+        overall_avg = sum(all_performances) / len(all_performances)
+        performance_consistency = 1.0 - np.std(all_performances)
+
+        if overall_avg > 0.8 and performance_consistency > 0.7:
+            strategy = "accelerated_learning"
+            focus = "Challenge yourself with advanced content across multiple topics"
+        elif overall_avg > 0.6:
+            strategy = "balanced_progression"
+            focus = "Continue steady progression with occasional challenges"
+        elif performance_consistency < 0.5:
+            strategy = "consistency_building"
+            focus = "Focus on building consistent performance before increasing difficulty"
+        else:
+            strategy = "foundational_strengthening"
+            focus = "Strengthen fundamental skills before advancing"
+
+        return {
+            "strategy": strategy,
+            "focus": focus,
+            "overall_performance": overall_avg,
+            "consistency_score": performance_consistency
+        }
+
+    def _identify_learning_milestones(self, profile: UserProfile, language_performance: Dict,
+                                      topic_performance: Dict) -> List[Dict]:
+        """Identify specific learning milestones for the user."""
+        milestones = []
+
+        # Language-based milestones
+        for language, performances in language_performance.items():
+            avg_perf = sum(p["performance"]
+                           for p in performances) / len(performances)
+            current_level = profile.reading_levels.get(
+                language, {}).get("level", 0)
+
+            if language == "english":
+                if avg_perf > 0.8 and current_level < 12:
+                    milestones.append({
+                        "type": "language_advancement",
+                        "language": language,
+                        "milestone": "Advance to college-level reading",
+                        "current_level": current_level,
+                        "target_level": min(12, current_level + 2),
+                        "estimated_sessions": 10
+                    })
+            else:  # Japanese
+                if avg_perf > 0.8 and current_level < 0.7:
+                    milestones.append({
+                        "type": "language_advancement",
+                        "language": language,
+                        "milestone": "Advance to intermediate Japanese reading",
+                        "current_level": current_level,
+                        "target_level": min(0.7, current_level + 0.1),
+                        "estimated_sessions": 15
+                    })
+
+        # Topic-based milestones
+        strong_topics = [topic for topic, perfs in topic_performance.items()
+                         if sum(p["performance"] for p in perfs) / len(perfs) > 0.8]
+
+        if len(strong_topics) >= 3:
+            milestones.append({
+                "type": "topic_mastery",
+                "milestone": "Explore interdisciplinary content",
+                "strong_topics": strong_topics,
+                "suggestion": "Try content that combines multiple areas of strength"
+            })
+
+        return milestones
+
+    def _suggest_difficulty_adjustment(self, avg_performance: float, trend: str) -> str:
+        """Suggest difficulty adjustment based on performance and trend."""
+        if avg_performance > 0.8 and trend == "improving":
+            return "increase_moderate"
+        elif avg_performance > 0.7 and trend == "stable":
+            return "increase_slight"
+        elif avg_performance < 0.5:
+            return "decrease_moderate"
+        elif trend == "declining":
+            return "decrease_slight"
+        else:
+            return "maintain"
+
     async def _generate_progress_recommendations(self, user_id: str, progress_metrics: Dict,
                                                  skill_trends: Dict, db: Session) -> List[Dict]:
+        """Generate recommendations based on progress analysis."""
+        recommendations = []
+
+        # Completion rate recommendations
+        completion_rate = progress_metrics.get("average_content_completion", 0)
+        if completion_rate < 0.5:
+            recommendations.append({
+                "type": "completion_improvement",
+                "message": "Focus on completing more content to build reading stamina",
+                "priority": "high"
+            })
+
+        # Reading speed recommendations
+        reading_speed = progress_metrics.get("average_reading_speed_wpm", 0)
+        if reading_speed < 150:
+            recommendations.append({
+                "type": "speed_improvement",
+                "message": "Practice reading exercises to improve reading speed",
+                "priority": "medium"
+            })
+        elif reading_speed > 300:
+            recommendations.append({
+                "type": "comprehension_focus",
+                "message": "Ensure comprehension isn't sacrificed for speed",
+                "priority": "medium"
+            })
+
+        # Trend-based recommendations
+        completion_trend = skill_trends.get(
+            "completion_rate_trend", {}).get("trend")
+        if completion_trend == "declining":
+            recommendations.append({
+                "type": "difficulty_adjustment",
+                "message": "Consider easier content to rebuild confidence",
+                "priority": "high"
+            })
+        elif completion_trend == "improving":
+            recommendations.append({
+                "type": "challenge_increase",
+                "message": "Ready for more challenging content",
+                "priority": "medium"
+            })
+
+        return recommendations
         """Generate recommendations based on progress analysis."""
         recommendations = []
 
