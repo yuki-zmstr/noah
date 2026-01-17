@@ -1,6 +1,6 @@
 """Vector database initialization for content embeddings and similarity search."""
 
-import pinecone
+from pinecone import Pinecone, ServerlessSpec
 from typing import Dict, Any
 import logging
 
@@ -14,7 +14,7 @@ class VectorDBManager:
 
     def __init__(self):
         """Initialize Pinecone client."""
-        self.pc = pinecone.Pinecone(api_key=settings.pinecone_api_key)
+        self.pc = Pinecone(api_key=settings.pinecone_api_key)
         self.index_name = "noah-content-embeddings"
         self.dimension = 384  # sentence-transformers/all-MiniLM-L6-v2 dimension
 
@@ -30,7 +30,7 @@ class VectorDBManager:
                     name=self.index_name,
                     dimension=self.dimension,
                     metric="cosine",
-                    spec=pinecone.ServerlessSpec(
+                    spec=ServerlessSpec(
                         cloud="aws",
                         region=settings.pinecone_environment
                     )

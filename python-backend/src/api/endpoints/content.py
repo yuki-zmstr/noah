@@ -16,6 +16,7 @@ from src.schemas.content import (
 )
 from src.services.content_service import content_service
 from src.services.content_adapter import AdaptationResult
+from src.services.purchase_link_generator import purchase_link_generator
 
 router = APIRouter()
 
@@ -226,8 +227,64 @@ async def get_purchase_links(
     db: Session = Depends(get_db)
 ):
     """Get all purchase links for content."""
-    links = db.query(PurchaseLink).filter(
-        PurchaseLink.content_id == content_id
-    ).all()
+    try:
+        links = await purchase_link_generator.get_purchase_links(content_id)
+        return links
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get purchase links: {str(e)}")
 
-    return links
+
+@router.post("/{content_id}/generate-purchase-links", response_model=List[PurchaseLinkResponse])
+async def generate_purchase_links(
+    content_id: str,
+    db: Session = Depends(get_db)
+):
+    """Generate purchase links for content using Amazon API and web search."""
+    # Verify content exists
+    content = db.query(ContentItem).filter(
+        ContentItem.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content item not found")
+
+    try:
+        # Extract metadata for link generation
+        metadata = content.content_metadata or {}
+        title = content.title
+        author = metadata.get('author')
+        isbn = metadata.get('isbn')
+
+        # Generate purchase links
+        links = await purchase_link_generator.generate_purchase_links(
+            content_id=content_id,
+            title=title,
+            author=author,
+            isbn=isbn
+        )
+
+        return links
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate purchase links: {str(e)}")
+
+
+@router.post("/{content_id}/refresh-amazon-links", response_model=List[PurchaseLinkResponse])
+async def refresh_amazon_links(
+    content_id: str,
+    db: Session = Depends(get_db)
+):
+    """Refresh Amazon purchase links for content."""
+    # Verify content exists
+    content = db.query(ContentItem).filter(
+        ContentItem.id == content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content item not found")
+
+    try:
+        links = await purchase_link_generator.refresh_amazon_links(content_id)
+        return links
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to refresh Amazon links: {str(e)}")

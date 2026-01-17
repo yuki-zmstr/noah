@@ -58,6 +58,9 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     "httpx>=0.25.2",
     "redis>=5.0.1",
+    
+    # Amazon API and web scraping
+    "lxml>=4.9.3",
 ]
 
 [project.optional-dependencies]

@@ -120,7 +120,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.5, 12.6**
 
 - [ ] 8. Build purchase link generation system
-  - [ ] 8.1 Implement Amazon API integration
+  - [-] 8.1 Implement Amazon API integration
     - Set up Amazon Product Advertising API for book lookup
     - Create ISBN/ASIN resolution for accurate product matching
     - Add affiliate link generation with proper tracking
@@ -137,7 +137,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5**
 
 - [ ] 9. Implement content storage and retrieval system
-  - [ ] 9.1 Build content storage with metadata
+  - [x] 9.1 Build content storage with metadata
     - Create content ingestion pipeline with automatic metadata extraction
     - Implement vector similarity search for content recommendations
     - Add saved content management with user-specific metadata
