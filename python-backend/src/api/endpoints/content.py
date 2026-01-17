@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
+from pydantic import BaseModel
 
 from src.database import get_db
 from src.models.content import ContentItem, PurchaseLink
@@ -10,10 +11,30 @@ from src.schemas.content import (
     ContentItemCreate,
     ContentItemResponse,
     PurchaseLinkCreate,
-    PurchaseLinkResponse
+    PurchaseLinkResponse,
+    ContentAnalysis
 )
+from src.services.content_service import content_service
+from src.services.content_adapter import AdaptationResult
 
 router = APIRouter()
+
+
+# Request/Response models for new endpoints
+class TextAnalysisRequest(BaseModel):
+    text: str
+    language: str  # "english" or "japanese"
+
+
+class TextAdaptationRequest(BaseModel):
+    text: str
+    language: str
+    target_level: str  # "beginner", "intermediate", "advanced", "expert"
+
+
+class ContentAdaptationRequest(BaseModel):
+    target_level: str
+    user_language_preference: Optional[str] = None
 
 
 @router.post("/", response_model=ContentItemResponse)
@@ -21,31 +42,118 @@ async def create_content_item(
     content: ContentItemCreate,
     db: Session = Depends(get_db)
 ):
-    """Create a new content item."""
-    # Check if content already exists
-    existing_content = db.query(ContentItem).filter(
-        ContentItem.id == content.id
-    ).first()
-
-    if existing_content:
+    """Create and process a new content item."""
+    # Use content service to process and store content
+    try:
+        return await content_service.process_and_store_content(content)
+    except Exception as e:
         raise HTTPException(
-            status_code=400, detail="Content item already exists")
+            status_code=500, detail=f"Failed to process content: {str(e)}")
 
-    # Create new content item
-    db_content = ContentItem(
-        id=content.id,
-        title=content.title,
-        content=content.content,
-        language=content.language,
-        content_metadata=content.metadata.dict(),
-        analysis=content.analysis.dict() if content.analysis else None
+
+@router.post("/analyze", response_model=ContentAnalysis)
+async def analyze_text_sample(request: TextAnalysisRequest):
+    """Analyze a text sample without storing it."""
+    try:
+        return content_service.analyze_text_sample(request.text, request.language)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to analyze text: {str(e)}")
+
+
+@router.post("/adapt", response_model=Dict)
+async def adapt_text_sample(request: TextAdaptationRequest):
+    """Adapt a text sample to target reading level without storing it."""
+    try:
+        result = content_service.adapt_text_sample(
+            request.text,
+            request.language,
+            request.target_level
+        )
+        return {
+            "adapted_content": result.adapted_content,
+            "original_content": result.original_content,
+            "adaptations_made": result.adaptations_made,
+            "reading_level_change": result.reading_level_change,
+            "cultural_context_preserved": result.cultural_context_preserved
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to adapt text: {str(e)}")
+
+
+@router.get("/{content_id}/analysis", response_model=ContentAnalysis)
+async def get_content_analysis(content_id: str):
+    """Get content analysis for a specific content item."""
+    analysis = await content_service.get_content_analysis(content_id)
+    if not analysis:
+        raise HTTPException(
+            status_code=404, detail="Content analysis not found")
+    return analysis
+
+
+@router.post("/{content_id}/adapt", response_model=Dict)
+async def adapt_content_for_user(
+    content_id: str,
+    request: ContentAdaptationRequest
+):
+    """Adapt stored content to user's reading level."""
+    result = await content_service.adapt_content_for_user(
+        content_id,
+        request.target_level,
+        request.user_language_preference
     )
 
-    db.add(db_content)
-    db.commit()
-    db.refresh(db_content)
+    if not result:
+        raise HTTPException(status_code=404, detail="Content not found")
 
-    return db_content
+    return {
+        "adapted_content": result.adapted_content,
+        "original_content": result.original_content,
+        "adaptations_made": result.adaptations_made,
+        "reading_level_change": result.reading_level_change,
+        "cultural_context_preserved": result.cultural_context_preserved
+    }
+
+
+@router.get("/search/similar")
+async def search_similar_content(
+    query: str,
+    language: str,
+    limit: int = 10
+):
+    """Search for content similar to the query text."""
+    try:
+        results = await content_service.search_content_by_similarity(query, language, limit)
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@router.get("/filter/reading-level")
+async def get_content_by_reading_level(
+    language: str,
+    reading_level: str,
+    limit: int = 10
+):
+    """Get content filtered by reading level."""
+    try:
+        results = await content_service.get_content_by_reading_level(language, reading_level, limit)
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to filter content: {str(e)}")
+
+
+@router.get("/topics")
+async def get_content_topics(language: str):
+    """Get all unique topics from content analysis."""
+    try:
+        topics = await content_service.get_content_topics(language)
+        return {"topics": topics}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get topics: {str(e)}")
 
 
 @router.get("/{content_id}", response_model=ContentItemResponse)
