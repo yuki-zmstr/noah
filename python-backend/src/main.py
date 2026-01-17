@@ -53,6 +53,22 @@ def create_app() -> FastAPI:
             "version": settings.app_version
         }
 
+    @app.get("/api/config")
+    async def get_config():
+        """Get frontend configuration."""
+        return {
+            "app_name": settings.app_name,
+            "version": settings.app_version,
+            "debug": settings.debug,
+            "cors_origins": settings.cors_origins,
+            "features": {
+                "aws_agent_core": True,
+                "multilingual_support": True,
+                "discovery_mode": True,
+                "purchase_links": True
+            }
+        }
+
     return app
 
 
