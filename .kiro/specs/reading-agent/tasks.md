@@ -185,23 +185,41 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Add monitoring and logging with CloudWatch
     - _Requirements: All system requirements_
 
-- [ ] 12. Integration testing and optimization
-  - [ ]\* 12.1 Write integration tests for end-to-end workflows
+- [ ] 12. Integrate Strands Agents framework for enhanced agentic capabilities
+  - [ ] 12.1 Install and configure strands-agents packages
+    - Install strands-agents and strands-agents-tools packages via pip
+    - Configure strands framework integration with existing FastAPI backend
+    - Set up agent orchestration using strands for improved conversation management
+    - _Requirements: 10.3, 10.5, 13.1, 13.2_
+
+  - [ ] 12.2 Enhance conversational agent with strands capabilities
+    - Migrate existing AWS Agent Core functionality to strands framework
+    - Implement multi-agent workflows for complex recommendation scenarios
+    - Add tool integration for content processing and recommendation generation
+    - _Requirements: 10.1, 10.2, 10.6, 3.1, 3.2_
+
+  - [ ]\* 12.3 Write property test for strands agent integration
+    - **Property 20: Strands Agent Workflow Consistency**
+    - **Validates: Requirements 10.3, 10.5, 13.1, 13.2**
+
+- [ ] 13. Integration testing and optimization
+  - [ ]\* 13.1 Write integration tests for end-to-end workflows
     - Test complete user journey from chat interaction to book recommendation
     - Verify multilingual content processing and cultural context preservation
     - Test discovery mode and purchase link generation workflows
     - _Requirements: All system requirements_
 
-  - [ ] 12.2 Performance optimization and caching
+  - [ ] 13.2 Performance optimization and caching
     - Implement Redis caching for frequent recommendations and content analysis
     - Optimize database queries and add appropriate indexes
     - Add content delivery network for static assets
     - _Requirements: All system requirements_
 
-- [ ] 13. Final checkpoint - Complete system validation
+- [ ] 14. Final checkpoint - Complete system validation
   - Ensure all tests pass and system meets performance requirements
   - Verify multilingual support works correctly for English and Japanese
   - Test conversational interface, discovery mode, and purchase link generation
+  - Validate strands agents integration and enhanced agentic capabilities
   - Ask the user if questions arise
 
 ## Notes
