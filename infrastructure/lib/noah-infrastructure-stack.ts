@@ -131,33 +131,33 @@ export class NoahInfrastructureStack extends cdk.Stack {
       databaseName: 'noah',
     })
 
-    // OpenSearch for vector similarity search
-    const searchDomain = new opensearch.Domain(this, 'NoahSearchDomain', {
-      version: opensearch.EngineVersion.OPENSEARCH_2_9,
-      capacity: {
-        dataNodes: 1,
-        dataNodeInstanceType: 't3.small.search',
-      },
-      ebs: {
-        volumeSize: 20,
-        volumeType: ec2.EbsDeviceVolumeType.GP3,
-      },
-      vpc,
-      vpcSubnets: [
-        {
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-          availabilityZones: [vpc.availabilityZones[0]], // Use only first AZ
-        }
-      ],
-      zoneAwareness: {
-        enabled: false,
-      },
-      logging: {
-        slowSearchLogEnabled: true,
-        appLogEnabled: true,
-        slowIndexLogEnabled: true,
-      },
-    })
+    // Note: OpenSearch will be added later - commenting out for initial deployment
+    // const searchDomain = new opensearch.Domain(this, 'NoahSearchDomain', {
+    //   version: opensearch.EngineVersion.OPENSEARCH_2_9,
+    //   capacity: {
+    //     dataNodes: 1,
+    //     dataNodeInstanceType: 't3.small.search',
+    //   },
+    //   ebs: {
+    //     volumeSize: 20,
+    //     volumeType: ec2.EbsDeviceVolumeType.GP3,
+    //   },
+    //   vpc,
+    //   vpcSubnets: [
+    //     {
+    //       subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+    //       availabilityZones: [vpc.availabilityZones[0]], // Use only first AZ
+    //     }
+    //   ],
+    //   zoneAwareness: {
+    //     enabled: false,
+    //   },
+    //   logging: {
+    //     slowSearchLogEnabled: true,
+    //     appLogEnabled: true,
+    //     slowIndexLogEnabled: true,
+    //   },
+    // })
 
     // ECS Cluster for backend services
     const cluster = new ecs.Cluster(this, 'NoahCluster', {
@@ -180,7 +180,7 @@ export class NoahInfrastructureStack extends cdk.Stack {
           DATABASE_PORT: '5432',
           DATABASE_NAME: 'noah',
           DATABASE_USER: 'noah_db_admin',
-          OPENSEARCH_ENDPOINT: searchDomain.domainEndpoint,
+          OPENSEARCH_ENDPOINT: 'disabled-for-initial-deployment',
           COGNITO_USER_POOL_ID: userPool.userPoolId,
           COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
           COGNITO_REGION: this.region,
@@ -203,8 +203,8 @@ export class NoahInfrastructureStack extends cdk.Stack {
     // Allow backend to access database
     database.connections.allowFrom(backendService.service, ec2.Port.tcp(5432))
 
-    // Allow backend to access OpenSearch
-    searchDomain.connections.allowFrom(backendService.service, ec2.Port.tcp(443))
+    // Allow backend to access OpenSearch (commented out for initial deployment)
+    // searchDomain.connections.allowFrom(backendService.service, ec2.Port.tcp(443))
 
     // CloudWatch Log Group for application logs
     const appLogGroup = new logs.LogGroup(this, 'NoahAppLogGroup', {
@@ -391,10 +391,10 @@ export class NoahInfrastructureStack extends cdk.Stack {
       description: 'PostgreSQL database endpoint',
     })
 
-    new cdk.CfnOutput(this, 'OpenSearchEndpoint', {
-      value: searchDomain.domainEndpoint,
-      description: 'OpenSearch domain endpoint',
-    })
+    // new cdk.CfnOutput(this, 'OpenSearchEndpoint', {
+    //   value: searchDomain.domainEndpoint,
+    //   description: 'OpenSearch domain endpoint',
+    // })
 
     new cdk.CfnOutput(this, 'BackendUrl', {
       value: backendService.loadBalancer.loadBalancerDnsName,

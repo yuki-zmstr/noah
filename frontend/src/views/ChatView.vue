@@ -171,7 +171,7 @@ const {
 const messageInput = ref("");
 const messagesContainer = ref<HTMLElement>();
 const isTyping = ref(false);
-const typingTimeout = ref<NodeJS.Timeout>();
+const typingTimeout = ref<number>();
 const currentStreamingMessage = ref<ChatMessageType | null>(null);
 
 // Computed properties from store - use store directly for reactivity
@@ -395,10 +395,8 @@ onConversationHistory((data) => {
   // Load historical messages
   data.messages.forEach((msg) => {
     chatStore.addMessage({
-      id: msg.message_id || `msg_${Date.now()}_${Math.random()}`,
       content: msg.content,
       sender: msg.sender as "user" | "noah",
-      timestamp: new Date(msg.timestamp),
       type: (msg.type as ChatMessageType["type"]) || "text",
       metadata: msg.metadata,
     });
