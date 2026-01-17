@@ -13,6 +13,7 @@ import * as logs from 'aws-cdk-lib/aws-logs'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as bedrock from 'aws-cdk-lib/aws-bedrock'
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import { Construct } from 'constructs'
 
 export class NoahInfrastructureStack extends cdk.Stack {
@@ -189,6 +190,8 @@ export class NoahInfrastructureStack extends cdk.Stack {
         },
         secrets: {
           DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(database.secret!, 'password'),
+          PINECONE_API_KEY: ecs.Secret.fromSecretsManager(secretsmanager.Secret.fromSecretNameV2(this, 'PineconeSecret', 'pinecone/api-key')),
+          OPENAI_API_KEY: ecs.Secret.fromSecretsManager(secretsmanager.Secret.fromSecretNameV2(this, 'OpenAISecret', 'openai/api-key')),
         },
         logDriver: ecs.LogDrivers.awsLogs({
           streamPrefix: 'noah-backend',

@@ -39,8 +39,6 @@ dependencies = [
     "nltk>=3.8.1",
     "openai>=1.0.0",
     "numpy>=1.24.0",
-    # Japanese language processing (optional)
-    # "mecab-python3>=1.0.6",  # Removed for lighter image
     # Utilities
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",
