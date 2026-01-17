@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from src.services.content_processor import content_processor
-from src.services.content_adapter import content_adapter, AdaptationResult
 from src.schemas.content import ContentAnalysis, ContentMetadata, ContentItemCreate, ContentItemResponse
 from src.models.content import ContentItem
 from src.services.database import db_service
@@ -19,7 +18,6 @@ class ContentService:
     def __init__(self):
         """Initialize the content service."""
         self.processor = content_processor
-        self.adapter = content_adapter
 
     def process_and_store_content(self, content_data: ContentItemCreate) -> ContentItemResponse:
         """
@@ -81,61 +79,6 @@ class ContentService:
                 return ContentAnalysis(**content_item.analysis)
             return None
 
-    async def adapt_content_for_user(self, content_id: str, target_reading_level: str,
-                                     user_language_preference: str = None) -> Optional[AdaptationResult]:
-        """
-        Adapt content to user's reading level and preferences.
-
-        Args:
-            content_id: ID of the content to adapt
-            target_reading_level: Target reading level ("beginner", "intermediate", "advanced", "expert")
-            user_language_preference: User's preferred language for adaptations
-
-        Returns:
-            AdaptationResult if successful, None if content not found
-        """
-        logger.info(
-            f"Adapting content {content_id} to {target_reading_level} level")
-
-        async with get_db_session() as session:
-            content_item = await session.get(ContentItem, content_id)
-            if not content_item:
-                return None
-
-            # Get current reading level from analysis
-            analysis = ContentAnalysis(
-                **content_item.analysis) if content_item.analysis else None
-            if not analysis:
-                logger.warning(f"No analysis found for content {content_id}")
-                return None
-
-            current_level = analysis.reading_level.get('level', 'intermediate')
-
-            # Perform adaptation
-            adaptation_result = self.adapter.adapt_content(
-                content=content_item.content,
-                language=content_item.language,
-                target_level=target_reading_level,
-                current_level=current_level,
-                preserve_meaning=True
-            )
-
-            # Store adaptation result
-            if adaptation_result.adaptations_made:
-                adaptations = content_item.adaptations or []
-                adaptations.append({
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "target_level": target_reading_level,
-                    "adaptations": adaptation_result.adaptations_made,
-                    "reading_level_change": adaptation_result.reading_level_change
-                })
-
-                content_item.adaptations = adaptations
-                content_item.updated_at = datetime.utcnow()
-                await session.commit()
-
-            return adaptation_result
-
     async def search_content_by_similarity(self, query_text: str, language: str,
                                            limit: int = 10) -> List[ContentItemResponse]:
         """
@@ -150,7 +93,7 @@ class ContentService:
             List of similar content items
         """
         # Generate embedding for query
-        query_embedding = self.processor._generate_embedding(query_text)
+        query_embedding = self.processor._generate_openai_embedding(query_text)
 
         # In a real implementation, this would use vector similarity search
         # For now, return a simple text-based search
@@ -259,30 +202,6 @@ class ContentService:
         )
 
         return self.processor.analyze_content(text, language, metadata)
-
-    def adapt_text_sample(self, text: str, language: str, target_level: str) -> AdaptationResult:
-        """
-        Adapt a text sample without storing it.
-
-        Args:
-            text: Text to adapt
-            language: Language of the text
-            target_level: Target reading level
-
-        Returns:
-            AdaptationResult
-        """
-        # First analyze to get current level
-        analysis = self.analyze_text_sample(text, language)
-        current_level = analysis.reading_level.get('level', 'intermediate')
-
-        return self.adapter.adapt_content(
-            content=text,
-            language=language,
-            target_level=target_level,
-            current_level=current_level,
-            preserve_meaning=True
-        )
 
 
 # Global instance

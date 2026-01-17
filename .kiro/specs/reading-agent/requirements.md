@@ -53,28 +53,30 @@ A personalized reading agent system that learns and adapts to a user's reading i
 4. WHEN no explicit context is provided, THE Noah SHALL infer context from historical patterns and current behavior
 5. THE Noah SHALL offer autonomous decision-making mode where it selects content without user input based on learned preferences
 
-### Requirement 4: Content Adaptation
+### Requirement 4: Content Analysis and Processing (Simplified)
 
-**User Story:** As a reader, I want content adjusted to my reading level, so that I can understand complex material without being overwhelmed.
+**User Story:** As a reader, I want the system to analyze content for relevance and difficulty, so that I receive appropriate recommendations.
 
 #### Acceptance Criteria
 
-1. WHEN content is above the user's reading level, THE Content_Processor SHALL simplify vocabulary and sentence structure
-2. WHEN content is below the user's reading level, THE Content_Processor SHALL maintain original complexity
-3. THE Content_Processor SHALL preserve key information and meaning during adaptation
-4. WHEN adapting content, THE Noah SHALL maintain the original author's intent and factual accuracy
+1. WHEN new content is provided, THE Content_Processor SHALL analyze it for topic, complexity, and reading level using lightweight NLP techniques
+2. WHEN content is analyzed, THE Noah SHALL generate an Interest_Score based on the User_Profile
+3. THE Content_Processor SHALL determine reading difficulty using established readability metrics and simple heuristics
+4. THE Content_Processor SHALL generate content embeddings using OpenAI's embedding API for semantic similarity matching
+5. THE Noah SHALL use content analysis to improve recommendation accuracy without requiring complex local ML models
 
 ### Requirement 5: Adaptive Reading Level Assessment
 
-**User Story:** As a reader, I want Noah to accurately assess and adapt to my reading level, so that content is always appropriately challenging without being overwhelming.
+**User Story:** As a reader, I want Noah to accurately assess my reading level, so that content recommendations are appropriately challenging.
 
 #### Acceptance Criteria
 
 1. WHEN a user reads content, THE Noah SHALL track reading speed, comprehension indicators, and completion rates
-2. WHEN a user struggles with content, THE Noah SHALL adjust the reading level assessment and suggest easier alternatives
-3. THE Noah SHALL identify topics where the user shows strong comprehension and gradually increase complexity
+2. WHEN a user struggles with content, THE Noah SHALL note this and suggest easier alternatives in future recommendations
+3. THE Noah SHALL identify topics where the user shows strong comprehension and gradually suggest more complex content
 4. WHEN reading patterns indicate improved skills, THE Noah SHALL suggest more challenging content in familiar topics first
 5. THE Noah SHALL maintain separate reading level assessments for different subject areas and content types
+6. THE Noah SHALL focus on content curation and recommendation rather than content modification
 
 ### Requirement 6: Content Storage and Retrieval
 
@@ -111,18 +113,19 @@ A personalized reading agent system that learns and adapts to a user's reading i
 4. WHEN preferences are modified, THE Noah SHALL update recommendations immediately to reflect changes
 5. THE Noah SHALL provide transparency into why specific content was recommended
 
-### Requirement 9: Multilingual Support
+### Requirement 9: Multilingual Support (Lightweight)
 
-**User Story:** As a multilingual reader, I want Noah to understand and process content in both English and Japanese, so that I can receive recommendations and adaptations in both languages.
+**User Story:** As a multilingual reader, I want Noah to understand and process content in both English and Japanese, so that I can receive recommendations in both languages.
 
 #### Acceptance Criteria
 
-1. THE Noah SHALL process and analyze content in both English and Japanese languages
-2. WHEN content is in Japanese, THE Noah SHALL assess reading level using Japanese-specific complexity metrics
+1. THE Noah SHALL process and analyze content in both English and Japanese languages using lightweight NLP techniques
+2. WHEN content is in Japanese, THE Noah SHALL assess reading level using simplified Japanese-specific complexity metrics
 3. WHEN content is in English, THE Noah SHALL assess reading level using English-specific readability standards
 4. THE Noah SHALL maintain separate reading level assessments for English and Japanese proficiency
-5. WHEN adapting content, THE Noah SHALL preserve language-specific nuances and cultural context
-6. THE Noah SHALL allow users to specify language preferences for recommendations and content adaptation
+5. THE Noah SHALL use OpenAI's multilingual embedding models for cross-language content understanding
+6. THE Noah SHALL allow users to specify language preferences for recommendations
+7. THE Noah SHALL focus on content recommendation and curation rather than content modification for different languages
 
 ### Requirement 10: Conversational Chatbot Interface
 

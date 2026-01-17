@@ -1,4 +1,4 @@
-"""Multilingual content processing and analysis service."""
+"""Lightweight content processing service using OpenAI embeddings."""
 
 import logging
 import re
@@ -7,15 +7,14 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 from enum import Enum
 
-import spacy
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
-from sentence_transformers import SentenceTransformer
-import MeCab
-import torch
+import openai
+from openai import OpenAI
 
 from src.schemas.content import ContentAnalysis, ContentMetadata
+from src.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,15 +27,13 @@ class SupportedLocale(Enum):
 
 
 class ContentProcessor:
-    """Multilingual content processor for English and Japanese text analysis."""
+    """Lightweight content processor using OpenAI embeddings."""
 
     def __init__(self):
-        """Initialize the content processor with required models and tools."""
+        """Initialize the content processor with OpenAI client."""
         self._setup_locales()
         self._initialize_nltk()
-        self._initialize_spacy()
-        self._initialize_mecab()
-        self._initialize_sentence_transformer()
+        self._initialize_openai()
 
     def _setup_locales(self):
         """Set up locale support for different languages."""
@@ -111,7 +108,7 @@ class ContentProcessor:
                 self.stopwords['english'] = set()
                 self.stopwords['en'] = set()
 
-            # Japanese doesn't have NLTK stopwords, we'll define basic ones
+            # Japanese stopwords
             self.stopwords['japanese'] = {
                 'の', 'に', 'は', 'を', 'た', 'が', 'で', 'て', 'と', 'し', 'れ', 'さ', 'ある', 'いる',
                 'も', 'する', 'から', 'な', 'こと', 'として', 'い', 'や', 'れる', 'など', 'なっ', 'ない',
@@ -127,76 +124,14 @@ class ContentProcessor:
             self.stopwords = {'english': set(), 'en': set(),
                               'japanese': set(), 'ja': set()}
 
-    def _initialize_spacy(self):
-        """Initialize spaCy models with locale-aware loading."""
-        self.nlp_models = {}
-
-        # English models
-        english_models = ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"]
-        for model_name in english_models:
-            try:
-                self.nlp_models['english'] = spacy.load(model_name)
-                self.nlp_models['en'] = self.nlp_models['english']
-                logger.info(f"Loaded English spaCy model: {model_name}")
-                break
-            except OSError:
-                continue
-
-        if 'english' not in self.nlp_models:
-            logger.warning(
-                "No English spaCy model found. Install with: python -m spacy download en_core_web_sm")
-            self.nlp_models['english'] = None
-            self.nlp_models['en'] = None
-
-        # Japanese models
-        japanese_models = ["ja_core_news_sm",
-                           "ja_core_news_md", "ja_core_news_lg"]
-        for model_name in japanese_models:
-            try:
-                self.nlp_models['japanese'] = spacy.load(model_name)
-                self.nlp_models['ja'] = self.nlp_models['japanese']
-                logger.info(f"Loaded Japanese spaCy model: {model_name}")
-                break
-            except OSError:
-                continue
-
-        if 'japanese' not in self.nlp_models:
-            logger.warning(
-                "No Japanese spaCy model found. Install with: python -m spacy download ja_core_news_sm")
-            self.nlp_models['japanese'] = None
-            self.nlp_models['ja'] = None
-
-    def _initialize_mecab(self):
-        """Initialize MeCab for Japanese text analysis with locale support."""
+    def _initialize_openai(self):
+        """Initialize OpenAI client."""
         try:
-            # Set Japanese locale for MeCab initialization
-            self._set_locale_for_language("japanese")
-
-            # Initialize MeCab with different output formats
-            self.mecab_wakati = MeCab.Tagger("-Owakati")  # Word segmentation
-            self.mecab_chasen = MeCab.Tagger("-Ochasen")  # Detailed analysis
-            self.mecab_features = MeCab.Tagger()  # Full feature analysis
-
-            logger.info("MeCab initialized successfully")
-
-            # Restore original locale
-            self._restore_original_locale()
-
+            self.openai_client = OpenAI(api_key=settings.openai_api_key)
+            logger.info("OpenAI client initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize MeCab: {e}")
-            self.mecab_wakati = None
-            self.mecab_chasen = None
-            self.mecab_features = None
-
-    def _initialize_sentence_transformer(self):
-        """Initialize sentence transformer for embeddings."""
-        try:
-            # Use a multilingual model that supports both English and Japanese
-            self.sentence_model = SentenceTransformer(
-                'paraphrase-multilingual-MiniLM-L12-v2')
-        except Exception as e:
-            logger.error(f"Failed to initialize sentence transformer: {e}")
-            self.sentence_model = None
+            logger.error(f"Failed to initialize OpenAI client: {e}")
+            self.openai_client = None
 
     def analyze_content(self, content: str, language: str, metadata: ContentMetadata) -> ContentAnalysis:
         """
@@ -241,7 +176,7 @@ class ContentProcessor:
             raise ValueError(f"Unsupported language: {language}")
 
     def _analyze_english_content(self, content: str, metadata: ContentMetadata) -> ContentAnalysis:
-        """Analyze English content using NLTK and spaCy."""
+        """Analyze English content using NLTK and simple heuristics."""
         # Basic text statistics
         sentences = sent_tokenize(content)
         words = word_tokenize(content.lower())
@@ -252,16 +187,16 @@ class ContentProcessor:
         reading_level = self._calculate_english_readability(
             content, word_count, sentence_count)
 
-        # Extract topics and key phrases
-        topics = self._extract_english_topics(content)
-        key_phrases = self._extract_english_key_phrases(content)
+        # Extract topics and key phrases using simple methods
+        topics = self._extract_english_topics_simple(content, words)
+        key_phrases = self._extract_english_key_phrases_simple(content, words)
 
         # Calculate complexity metrics
         complexity = self._calculate_english_complexity(
             content, words, sentences)
 
-        # Generate embedding
-        embedding = self._generate_embedding(content)
+        # Generate embedding using OpenAI
+        embedding = self._generate_openai_embedding(content)
 
         return ContentAnalysis(
             topics=topics,
@@ -272,31 +207,26 @@ class ContentProcessor:
         )
 
     def _analyze_japanese_content(self, content: str, metadata: ContentMetadata) -> ContentAnalysis:
-        """Analyze Japanese content using MeCab and spaCy."""
-        # Basic text statistics using MeCab
-        if self.mecab_wakati:
-            words = self.mecab_wakati.parse(content).strip().split()
-            word_count = len(words)
-        else:
-            # Fallback: rough word count
-            word_count = len(content.replace(' ', ''))
-
+        """Analyze Japanese content using simple heuristics."""
+        # Basic text statistics
         sentences = self._split_japanese_sentences(content)
         sentence_count = len(sentences)
+        # Character count for Japanese
+        word_count = len(content.replace(' ', ''))
 
         # Calculate Japanese-specific readability metrics
         reading_level = self._calculate_japanese_readability(
             content, word_count, sentence_count)
 
-        # Extract topics and key phrases
-        topics = self._extract_japanese_topics(content)
-        key_phrases = self._extract_japanese_key_phrases(content)
+        # Extract topics and key phrases using simple methods
+        topics = self._extract_japanese_topics_simple(content)
+        key_phrases = self._extract_japanese_key_phrases_simple(content)
 
         # Calculate complexity metrics
         complexity = self._calculate_japanese_complexity(content, sentences)
 
-        # Generate embedding
-        embedding = self._generate_embedding(content)
+        # Generate embedding using OpenAI
+        embedding = self._generate_openai_embedding(content)
 
         return ContentAnalysis(
             topics=topics,
@@ -378,132 +308,124 @@ class ContentProcessor:
             "level": level
         }
 
-    def _extract_english_topics(self, content: str) -> List[Dict]:
-        """Extract topics from English content using spaCy."""
+    def _extract_english_topics_simple(self, content: str, words: List[str]) -> List[Dict]:
+        """Extract topics from English content using simple frequency analysis."""
         topics = []
 
-        if self.nlp_models.get("english"):
-            doc = self.nlp_models["english"](content)
+        # Filter out stopwords and get word frequencies
+        stopwords_set = self.stopwords.get('english', set())
+        content_words = [word for word in words if word.isalpha()
+                         and len(word) > 3 and word not in stopwords_set]
 
-            # Extract named entities as topics
-            entities = {}
-            for ent in doc.ents:
-                if ent.label_ in ["PERSON", "ORG", "GPE", "EVENT", "WORK_OF_ART"]:
-                    entities[ent.text] = entities.get(ent.text, 0) + 1
+        # Count word frequencies
+        word_freq = {}
+        for word in content_words:
+            word_freq[word] = word_freq.get(word, 0) + 1
 
-            # Convert to topic format
-            for entity, count in sorted(entities.items(), key=lambda x: x[1], reverse=True)[:10]:
+        # Get top words as topics
+        for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]:
+            confidence = min(count / len(content_words), 1.0)
+            if confidence > 0.01:  # Only include words that appear meaningfully
                 topics.append({
-                    "topic": entity,
-                    "confidence": min(count / 10, 1.0),
-                    "type": "entity"
+                    "topic": word.title(),
+                    "confidence": round(confidence, 3),
+                    "type": "keyword"
                 })
 
-        # Fallback: extract common nouns
-        if not topics:
-            words = word_tokenize(content.lower())
-            nouns = [word for word in words if word.isalpha(
-            ) and word not in self.stopwords.get('english', set())]
-            word_freq = {}
-            for word in nouns:
+        return topics
+
+    def _extract_japanese_topics_simple(self, content: str) -> List[Dict]:
+        """Extract topics from Japanese content using character patterns."""
+        topics = []
+
+        # Extract potential compound words (sequences of kanji/katakana)
+        kanji_words = re.findall(r'[\u4e00-\u9faf]{2,}', content)
+        katakana_words = re.findall(r'[\u30a0-\u30ff]{2,}', content)
+
+        # Count frequencies
+        word_freq = {}
+        for word in kanji_words + katakana_words:
+            if len(word) >= 2:
                 word_freq[word] = word_freq.get(word, 0) + 1
 
-            for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]:
-                topics.append({
-                    "topic": word,
-                    "confidence": min(count / 20, 1.0),
-                    "type": "keyword"
-                })
+        # Get top words as topics
+        for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:10]:
+            confidence = min(count / 10, 1.0)
+            topics.append({
+                "topic": word,
+                "confidence": round(confidence, 3),
+                "type": "keyword"
+            })
 
         return topics
 
-    def _extract_japanese_topics(self, content: str) -> List[Dict]:
-        """Extract topics from Japanese content using MeCab and spaCy."""
-        topics = []
+    def _extract_english_key_phrases_simple(self, content: str, words: List[str]) -> List[str]:
+        """Extract key phrases using simple bigram analysis."""
+        key_phrases = []
+        stopwords_set = self.stopwords.get("english", set())
 
-        if self.nlp_models.get("japanese"):
-            doc = self.nlp_models["japanese"](content)
+        # Filter meaningful words
+        meaningful_words = [w for w in words if w.isalpha()
+                            and len(w) > 2 and w not in stopwords_set]
 
-            # Extract named entities
-            entities = {}
-            for ent in doc.ents:
-                entities[ent.text] = entities.get(ent.text, 0) + 1
+        # Extract bigrams
+        bigrams = {}
+        for i in range(len(meaningful_words) - 1):
+            bigram = f"{meaningful_words[i]} {meaningful_words[i+1]}"
+            bigrams[bigram] = bigrams.get(bigram, 0) + 1
 
-            for entity, count in sorted(entities.items(), key=lambda x: x[1], reverse=True)[:10]:
-                topics.append({
-                    "topic": entity,
-                    "confidence": min(count / 5, 1.0),
-                    "type": "entity"
-                })
+        # Get top bigrams
+        for phrase, count in sorted(bigrams.items(), key=lambda x: x[1], reverse=True)[:10]:
+            if count > 1:  # Only phrases that appear multiple times
+                key_phrases.append(phrase.title())
 
-        # Use MeCab for noun extraction
-        if self.mecab_wakati and not topics:
-            parsed = self.mecab_wakati.parse(content)
-            # This is a simplified approach - in practice, you'd parse the MeCab output properly
-            words = parsed.strip().split()
-            word_freq = {}
-            for word in words:
-                if len(word) > 1:  # Filter out single characters
-                    word_freq[word] = word_freq.get(word, 0) + 1
+        return key_phrases
 
-            for word, count in sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]:
-                topics.append({
-                    "topic": word,
-                    "confidence": min(count / 10, 1.0),
-                    "type": "keyword"
-                })
-
-        return topics
-
-    def _extract_english_key_phrases(self, content: str) -> List[str]:
-        """Extract key phrases from English content."""
+    def _extract_japanese_key_phrases_simple(self, content: str) -> List[str]:
+        """Extract key phrases from Japanese content using pattern matching."""
         key_phrases = []
 
-        if self.nlp_models.get("english"):
-            doc = self.nlp_models["english"](content)
+        # Extract sequences of kanji + hiragana (common phrase pattern)
+        phrases = re.findall(
+            r'[\u4e00-\u9faf][\u3040-\u309f]{1,3}[\u4e00-\u9faf]', content)
 
-            # Extract noun phrases
-            for chunk in doc.noun_chunks:
-                if len(chunk.text.split()) >= 2 and len(chunk.text) <= 50:
-                    key_phrases.append(chunk.text.strip())
+        # Extract longer kanji sequences
+        long_phrases = re.findall(r'[\u4e00-\u9faf]{3,6}', content)
 
-        # Fallback: extract common bigrams and trigrams
-        if not key_phrases:
-            words = word_tokenize(content.lower())
-            stopwords_set = self.stopwords.get("english", set())
-            words = [w for w in words if w.isalpha() and w not in stopwords_set]
+        # Combine and deduplicate
+        all_phrases = list(set(phrases + long_phrases))
 
-            # Simple bigram extraction
-            for i in range(len(words) - 1):
-                phrase = f"{words[i]} {words[i+1]}"
-                if len(phrase) <= 30:
-                    key_phrases.append(phrase)
+        # Return top phrases by length (longer = more specific)
+        key_phrases = sorted(all_phrases, key=len, reverse=True)[:10]
 
-        # Return unique phrases, limit to 10
-        return list(set(key_phrases))[:10]
+        return key_phrases
 
-    def _extract_japanese_key_phrases(self, content: str) -> List[str]:
-        """Extract key phrases from Japanese content."""
-        key_phrases = []
+    def _generate_openai_embedding(self, content: str) -> List[float]:
+        """Generate embedding using OpenAI's text-embedding-3-small model."""
+        if not self.openai_client:
+            logger.warning(
+                "OpenAI client not available, returning zero vector")
+            return [0.0] * 1536  # text-embedding-3-small dimension
 
-        if self.nlp_models.get("japanese"):
-            doc = self.nlp_models["japanese"](content)
+        try:
+            # Truncate content to stay within token limits (~8000 tokens max)
+            truncated_content = content[:6000] if len(
+                content) > 6000 else content
 
-            # Extract noun phrases
-            for chunk in doc.noun_chunks:
-                if len(chunk.text) >= 2 and len(chunk.text) <= 20:
-                    key_phrases.append(chunk.text.strip())
+            response = self.openai_client.embeddings.create(
+                model="text-embedding-3-small",
+                input=truncated_content,
+                encoding_format="float"
+            )
 
-        # Fallback: extract compound words using simple heuristics
-        if not key_phrases and self.mecab_wakati:
-            # This is simplified - proper implementation would parse MeCab output
-            sentences = self._split_japanese_sentences(content)
-            for sentence in sentences[:3]:  # Analyze first few sentences
-                if len(sentence) >= 4:
-                    # Take first 10 characters as phrase
-                    key_phrases.append(sentence[:10])
+            embedding = response.data[0].embedding
+            logger.debug(
+                f"Generated OpenAI embedding with {len(embedding)} dimensions")
+            return embedding
 
-        return list(set(key_phrases))[:10]
+        except Exception as e:
+            logger.error(f"Failed to generate OpenAI embedding: {e}")
+            return [0.0] * 1536
 
     def _calculate_english_complexity(self, content: str, words: List[str], sentences: List[str]) -> Dict:
         """Calculate complexity metrics for English content."""
@@ -554,21 +476,6 @@ class ContentProcessor:
             "avg_sentence_length": round(avg_sentence_length, 2),
             "punctuation_density": round(punctuation_density, 3)
         }
-
-    def _generate_embedding(self, content: str) -> List[float]:
-        """Generate sentence embedding for content similarity."""
-        if not self.sentence_model:
-            return [0.0] * 384  # Return zero vector if model not available
-
-        try:
-            # Truncate content if too long (model has token limits)
-            truncated_content = content[:1000] if len(
-                content) > 1000 else content
-            embedding = self.sentence_model.encode(truncated_content)
-            return embedding.tolist()
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {e}")
-            return [0.0] * 384
 
     def _count_syllables_english(self, text: str) -> int:
         """Count syllables in English text (simplified approach)."""

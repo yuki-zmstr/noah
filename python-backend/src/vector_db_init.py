@@ -16,7 +16,7 @@ class VectorDBManager:
         """Initialize Pinecone client."""
         self.pc = Pinecone(api_key=settings.pinecone_api_key)
         self.index_name = "noah-content-embeddings"
-        self.dimension = 384  # sentence-transformers/all-MiniLM-L6-v2 dimension
+        self.dimension = 1536  # OpenAI text-embedding-3-small dimension
 
     def create_index_if_not_exists(self) -> bool:
         """Create Pinecone index if it doesn't exist."""

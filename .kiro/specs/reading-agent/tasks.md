@@ -2,7 +2,9 @@
 
 ## Overview
 
-This implementation plan creates Noah, a conversational reading agent using Vue.js for the frontend chatbot interface, Python FastAPI for the backend API with SQLAlchemy for database management, and AWS Agent Core for agent orchestration and NLU capabilities. The system will provide personalized book recommendations, content adaptation, multilingual support (English/Japanese), purchase link generation, and discovery mode functionality.
+This implementation plan creates Noah, a conversational reading agent using Vue.js for the frontend chatbot interface, Python FastAPI for the backend API with SQLAlchemy for database management, and AWS Agent Core for agent orchestration and NLU capabilities. The system will provide personalized book recommendations, lightweight content analysis, multilingual support (English/Japanese), purchase link generation, and discovery mode functionality.
+
+**ARCHITECTURE CHANGES:** Content adaptation features have been removed to create a lighter, more deployable system. The focus is now on content curation and recommendation rather than content modification. OpenAI's embedding API replaces heavy local ML models for better performance and smaller Docker images.
 
 **PRIORITY: Deploy first to test message functionality in production environment**
 
@@ -112,26 +114,25 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Add support for complex multi-turn conversations
     - _Requirements: 10.3, 13.1, 13.2_
 
-- [x] 6. Implement content processing and analysis system
-  - [x] 6.1 Build multilingual content processor
-    - Create English content analyzer using NLTK and spaCy for readability metrics
-    - Implement Japanese content analyzer with MeCab for kanji density and complexity
-    - Add topic extraction and content embedding generation using sentence transformers
-    - _Requirements: 2.1, 2.3, 9.1, 9.2, 9.3_
+- [x] 6. Implement content processing and analysis system (simplified)
+  - [x] 6.1 Build lightweight multilingual content processor
+    - Create English content analyzer using NLTK for basic readability metrics
+    - Implement Japanese content analyzer with simple heuristics for complexity assessment
+    - Add topic extraction using frequency analysis and regex patterns
+    - Generate content embeddings using OpenAI's text-embedding-3-small API
+    - _Requirements: 2.1, 2.3, 4.1, 4.2, 4.3, 9.1, 9.2, 9.3_
 
-  - [x] 6.2 Create content adaptation engine
-    - Build vocabulary simplification using word frequency databases
-    - Implement sentence structure simplification while preserving meaning
-    - Add cultural context preservation for Japanese content adaptation
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 9.5_
+  - [x] 6.2 ~~Create content adaptation engine~~ (REMOVED - Feature simplified for lighter deployment)
+    - ~~Build vocabulary simplification using word frequency databases~~
+    - ~~Implement sentence structure simplification while preserving meaning~~
+    - ~~Add cultural context preservation for Japanese content adaptation~~
+    - _Requirements: Content adaptation removed to reduce image size and complexity_
 
   - [ ]\* 6.3 Write property test for content analysis
-    - **Property 4: Comprehensive Content Analysis**
-    - **Validates: Requirements 2.1, 2.2, 2.3, 9.2, 9.3**
+    - **Property 4: Lightweight Content Analysis**
+    - **Validates: Requirements 2.1, 2.2, 2.3, 4.1, 4.2, 9.2, 9.3**
 
-  - [ ]\* 6.4 Write property test for content adaptation
-    - **Property 7: Adaptive Content Processing**
-    - **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
+  - [ ]\* ~~6.4 Write property test for content adaptation~~ (REMOVED)
 
 ## Phase 4: User Experience and Recommendations
 
@@ -320,4 +321,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 - Property tests validate universal correctness properties using Hypothesis library
 - Unit tests validate specific examples and edge cases using pytest
 - The system uses Vue.js + TypeScript for frontend, Python FastAPI + SQLAlchemy for backend with AWS Agent Core integration, and AWS for hosting
+- **ARCHITECTURE SIMPLIFIED:** Content adaptation engine removed to reduce Docker image size from ~4GB to ~1GB
+- **DEPENDENCIES OPTIMIZED:** Replaced torch, transformers, sentence-transformers, spaCy with lightweight OpenAI API integration
+- **FOCUS SHIFTED:** From content modification to content curation and intelligent recommendation
 - Most core functionality is implemented - remaining work focuses on integration, completion of purchase links, preference UI, and deployment

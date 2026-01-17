@@ -15,7 +15,6 @@ from src.schemas.content import (
     ContentAnalysis
 )
 from src.services.content_service import content_service
-from src.services.content_adapter import AdaptationResult
 from src.services.purchase_link_generator import purchase_link_generator
 
 router = APIRouter()
@@ -25,17 +24,6 @@ router = APIRouter()
 class TextAnalysisRequest(BaseModel):
     text: str
     language: str  # "english" or "japanese"
-
-
-class TextAdaptationRequest(BaseModel):
-    text: str
-    language: str
-    target_level: str  # "beginner", "intermediate", "advanced", "expert"
-
-
-class ContentAdaptationRequest(BaseModel):
-    target_level: str
-    user_language_preference: Optional[str] = None
 
 
 @router.post("/", response_model=ContentItemResponse)
@@ -62,27 +50,6 @@ async def analyze_text_sample(request: TextAnalysisRequest):
             status_code=500, detail=f"Failed to analyze text: {str(e)}")
 
 
-@router.post("/adapt", response_model=Dict)
-async def adapt_text_sample(request: TextAdaptationRequest):
-    """Adapt a text sample to target reading level without storing it."""
-    try:
-        result = content_service.adapt_text_sample(
-            request.text,
-            request.language,
-            request.target_level
-        )
-        return {
-            "adapted_content": result.adapted_content,
-            "original_content": result.original_content,
-            "adaptations_made": result.adaptations_made,
-            "reading_level_change": result.reading_level_change,
-            "cultural_context_preserved": result.cultural_context_preserved
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to adapt text: {str(e)}")
-
-
 @router.get("/{content_id}/analysis", response_model=ContentAnalysis)
 async def get_content_analysis(content_id: str):
     """Get content analysis for a specific content item."""
@@ -91,30 +58,6 @@ async def get_content_analysis(content_id: str):
         raise HTTPException(
             status_code=404, detail="Content analysis not found")
     return analysis
-
-
-@router.post("/{content_id}/adapt", response_model=Dict)
-async def adapt_content_for_user(
-    content_id: str,
-    request: ContentAdaptationRequest
-):
-    """Adapt stored content to user's reading level."""
-    result = await content_service.adapt_content_for_user(
-        content_id,
-        request.target_level,
-        request.user_language_preference
-    )
-
-    if not result:
-        raise HTTPException(status_code=404, detail="Content not found")
-
-    return {
-        "adapted_content": result.adapted_content,
-        "original_content": result.original_content,
-        "adaptations_made": result.adaptations_made,
-        "reading_level_change": result.reading_level_change,
-        "cultural_context_preserved": result.cultural_context_preserved
-    }
 
 
 @router.get("/search/similar")

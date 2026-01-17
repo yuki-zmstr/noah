@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     pinecone_api_key: str = ""
     pinecone_environment: str = "us-east-1-aws"
 
+    # OpenAI API
+    openai_api_key: str = ""
+
     # Amazon Product API
     amazon_access_key: str = ""
     amazon_secret_key: str = ""
