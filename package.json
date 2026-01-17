@@ -5,20 +5,20 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "backend",
+    "python-backend",
     "infrastructure"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && npm run dev",
+    "dev:backend": "cd python-backend && uv run python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
-    "build:backend": "cd backend && npm run build",
+    "build:backend": "cd python-backend && uv sync",
     "deploy": "cd infrastructure && npm run deploy",
     "test": "npm run test:frontend && npm run test:backend",
     "test:frontend": "cd frontend && npm run test",
-    "test:backend": "cd backend && npm run test"
+    "test:backend": "cd python-backend && uv run pytest"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

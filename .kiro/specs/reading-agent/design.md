@@ -102,28 +102,37 @@ The User Profile Engine maintains comprehensive models of user preferences, read
 - Model preference evolution over time
 - Process implicit and explicit feedback signals
 
-**Key Data Structures:**
+**Key Data Models:**
 
-```typescript
-interface UserProfile {
-  userId: string;
-  preferences: PreferenceModel;
-  readingLevels: LanguageReadingLevels;
-  behaviorHistory: ReadingBehavior[];
-  lastUpdated: Date;
-}
+```python
+from sqlalchemy import Column, String, DateTime, Integer, Float, JSON, ForeignKey
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from typing import List, Dict, Optional
+from pydantic import BaseModel
 
-interface PreferenceModel {
-  topics: TopicPreference[];
-  contentTypes: ContentTypePreference[];
-  contextualPreferences: ContextualPreference[];
-  evolutionHistory: PreferenceSnapshot[];
-}
+Base = declarative_base()
 
-interface LanguageReadingLevels {
-  english: ReadingLevel;
-  japanese: ReadingLevel;
-}
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    user_id = Column(String, primary_key=True)
+    preferences = Column(JSON)  # PreferenceModel as JSON
+    reading_levels = Column(JSON)  # LanguageReadingLevels as JSON
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+    behavior_history = relationship("ReadingBehavior", back_populates="user_profile")
+
+class PreferenceModel(BaseModel):
+    topics: List[Dict]
+    content_types: List[Dict]
+    contextual_preferences: List[Dict]
+    evolution_history: List[Dict]
+
+class LanguageReadingLevels(BaseModel):
+    english: Dict
+    japanese: Dict
 ```
 
 ### Content Processor
@@ -215,151 +224,171 @@ Processes both explicit and implicit feedback to continuously improve user model
 
 ### Content Model
 
-```typescript
-interface ContentItem {
-  id: string;
-  title: string;
-  content: string;
-  language: "english" | "japanese";
-  metadata: ContentMetadata;
-  analysis: ContentAnalysis;
-  adaptations: ContentAdaptation[];
-}
+```python
+from sqlalchemy import Column, String, DateTime, Integer, Float, JSON, Text
+from sqlalchemy.ext.declarative import declarative_base
+from pydantic import BaseModel
+from datetime import datetime
+from typing import List, Dict, Optional
 
-interface ContentMetadata {
-  author: string;
-  source: string;
-  publishDate: Date;
-  contentType: ContentType;
-  estimatedReadingTime: number;
-  tags: string[];
-}
+class ContentItem(Base):
+    __tablename__ = "content_items"
 
-interface ContentAnalysis {
-  topics: TopicScore[];
-  readingLevel: ReadingLevelScore;
-  complexity: ComplexityMetrics;
-  embedding: number[];
-  keyPhrases: string[];
-}
+    id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    language = Column(String, nullable=False)  # "english" or "japanese"
+    metadata = Column(JSON)  # ContentMetadata as JSON
+    analysis = Column(JSON)  # ContentAnalysis as JSON
+    adaptations = Column(JSON)  # List of ContentAdaptation as JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class ContentMetadata(BaseModel):
+    author: str
+    source: str
+    publish_date: datetime
+    content_type: str
+    estimated_reading_time: int
+    tags: List[str]
+
+class ContentAnalysis(BaseModel):
+    topics: List[Dict]
+    reading_level: Dict
+    complexity: Dict
+    embedding: List[float]
+    key_phrases: List[str]
 ```
 
 ### Reading Behavior Model
 
-```typescript
-interface ReadingBehavior {
-  contentId: string;
-  sessionId: string;
-  startTime: Date;
-  endTime: Date;
-  completionRate: number;
-  readingSpeed: number;
-  pausePatterns: PauseEvent[];
-  interactions: InteractionEvent[];
-  context: ReadingContext;
-}
+```python
+class ReadingBehavior(Base):
+    __tablename__ = "reading_behaviors"
 
-interface ReadingContext {
-  timeOfDay: string;
-  deviceType: string;
-  location?: string;
-  availableTime?: number;
-  userMood?: string;
-}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content_id = Column(String, ForeignKey("content_items.id"))
+    user_id = Column(String, ForeignKey("user_profiles.user_id"))
+    session_id = Column(String, nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime)
+    completion_rate = Column(Float)
+    reading_speed = Column(Float)
+    pause_patterns = Column(JSON)  # List of pause events
+    interactions = Column(JSON)  # List of interaction events
+    context = Column(JSON)  # ReadingContext as JSON
+
+    user_profile = relationship("UserProfile", back_populates="behavior_history")
+    content_item = relationship("ContentItem")
+
+class ReadingContext(BaseModel):
+    time_of_day: str
+    device_type: str
+    location: Optional[str] = None
+    available_time: Optional[int] = None
+    user_mood: Optional[str] = None
 ```
 
 ### Preference Evolution Model
 
-```typescript
-interface PreferenceSnapshot {
-  timestamp: Date;
-  topicWeights: Map<string, number>;
-  readingLevelPreference: number;
-  contextualFactors: Map<string, number>;
-  confidenceScore: number;
-}
+```python
+class PreferenceSnapshot(Base):
+    __tablename__ = "preference_snapshots"
 
-interface TopicPreference {
-  topic: string;
-  weight: number;
-  confidence: number;
-  lastUpdated: Date;
-  evolutionTrend: "increasing" | "decreasing" | "stable";
-}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("user_profiles.user_id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    topic_weights = Column(JSON)  # Dict mapping topics to weights
+    reading_level_preference = Column(Float)
+    contextual_factors = Column(JSON)  # Dict of contextual factors
+    confidence_score = Column(Float)
+
+class TopicPreference(BaseModel):
+    topic: str
+    weight: float
+    confidence: float
+    last_updated: datetime
+    evolution_trend: str  # "increasing", "decreasing", or "stable"
 ```
 
 ### Conversation Model
 
-```typescript
-interface ConversationSession {
-  sessionId: string;
-  userId: string;
-  messages: ConversationMessage[];
-  context: ConversationContext;
-  startTime: Date;
-  lastActivity: Date;
-  isPersistent: boolean;
-}
+```python
+class ConversationSession(Base):
+    __tablename__ = "conversation_sessions"
 
-interface ConversationHistory {
-  userId: string;
-  sessions: ConversationSession[];
-  totalMessages: number;
-  firstInteraction: Date;
-  lastInteraction: Date;
-  conversationSummaries: ConversationSummary[];
-}
+    session_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("user_profiles.user_id"))
+    context = Column(JSON)  # ConversationContext as JSON
+    start_time = Column(DateTime, default=datetime.utcnow)
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    is_persistent = Column(Boolean, default=True)
 
-interface ConversationSummary {
-  timeRange: DateRange;
-  keyTopics: string[];
-  preferenceChanges: PreferenceChange[];
-  importantRecommendations: string[];
-  userFeedback: string[];
-}
+    messages = relationship("ConversationMessage", back_populates="session")
 
-interface ConversationMessage {
-  messageId: string;
-  sender: "user" | "noah";
-  content: string;
-  timestamp: Date;
-  intent?: UserIntent;
-  recommendations?: ContentRecommendation[];
-  purchaseLinks?: PurchaseLink[];
-}
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
 
-interface ConversationContext {
-  currentTopic?: string;
-  recentRecommendations: string[];
-  userMood?: string;
-  discoveryModeActive: boolean;
-  preferredLanguage: "english" | "japanese";
-}
+    message_id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("conversation_sessions.session_id"))
+    sender = Column(String, nullable=False)  # "user" or "noah"
+    content = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    intent = Column(JSON)  # UserIntent as JSON
+    recommendations = Column(JSON)  # List of ContentRecommendation
+    purchase_links = Column(JSON)  # List of PurchaseLink
+
+    session = relationship("ConversationSession", back_populates="messages")
+
+class ConversationHistory(Base):
+    __tablename__ = "conversation_histories"
+
+    user_id = Column(String, primary_key=True)
+    total_messages = Column(Integer, default=0)
+    first_interaction = Column(DateTime)
+    last_interaction = Column(DateTime)
+    conversation_summaries = Column(JSON)  # List of ConversationSummary
+
+class ConversationContext(BaseModel):
+    current_topic: Optional[str] = None
+    recent_recommendations: List[str] = []
+    user_mood: Optional[str] = None
+    discovery_mode_active: bool = False
+    preferred_language: str = "english"  # "english" or "japanese"
 ```
 
 ### Purchase Link Model
 
-```typescript
-interface PurchaseLink {
-  linkId: string;
-  contentId: string;
-  linkType: "amazon" | "web_search" | "library" | "alternative_retailer";
-  url: string;
-  displayText: string;
-  format?: "physical" | "digital" | "audiobook";
-  price?: string;
-  availability: "available" | "pre_order" | "out_of_stock" | "unknown";
-  generatedAt: Date;
-}
+```python
+class PurchaseLink(Base):
+    __tablename__ = "purchase_links"
 
-interface DiscoveryRecommendation {
-  contentId: string;
-  divergenceScore: number;
-  bridgingTopics: string[];
-  discoveryReason: string;
-  userResponse?: "interested" | "not_interested" | "purchased" | "saved";
-  responseTimestamp?: Date;
-}
+    link_id = Column(String, primary_key=True)
+    content_id = Column(String, ForeignKey("content_items.id"))
+    link_type = Column(String, nullable=False)  # "amazon", "web_search", "library", "alternative_retailer"
+    url = Column(String, nullable=False)
+    display_text = Column(String, nullable=False)
+    format = Column(String)  # "physical", "digital", "audiobook"
+    price = Column(String)
+    availability = Column(String, default="unknown")  # "available", "pre_order", "out_of_stock", "unknown"
+    generated_at = Column(DateTime, default=datetime.utcnow)
+
+    content_item = relationship("ContentItem")
+
+class DiscoveryRecommendation(Base):
+    __tablename__ = "discovery_recommendations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content_id = Column(String, ForeignKey("content_items.id"))
+    user_id = Column(String, ForeignKey("user_profiles.user_id"))
+    divergence_score = Column(Float, nullable=False)
+    bridging_topics = Column(JSON)  # List of topics
+    discovery_reason = Column(String, nullable=False)
+    user_response = Column(String)  # "interested", "not_interested", "purchased", "saved"
+    response_timestamp = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    content_item = relationship("ContentItem")
+    user_profile = relationship("UserProfile")
 ```
 
 ## Correctness Properties
@@ -511,7 +540,7 @@ Key property test categories:
 
 ### Unit Testing
 
-Unit tests will focus on specific examples, edge cases, and integration points:
+Unit tests will focus on specific examples, edge cases, and integration points using pytest:
 
 - **Content Analysis Edge Cases**: Empty content, extremely short/long content, mixed-language content
 - **User Profile Boundaries**: New users, users with conflicting preferences, users with sparse data
@@ -522,7 +551,7 @@ Unit tests will focus on specific examples, edge cases, and integration points:
 
 - **End-to-End Workflows**: Complete user journeys from content ingestion to recommendation delivery
 - **Cross-Component Communication**: Verify proper data flow between profile engine, content processor, and recommendation generator
-- **Performance Testing**: Ensure system maintains responsiveness under realistic load conditions
+- **Performance Testing**: Ensure system maintains responsiveness under realistic load conditions using pytest-benchmark
 - **Multilingual Integration**: Verify seamless operation across language boundaries and cultural contexts
 
 The testing strategy ensures both correctness (through property-based testing) and reliability (through comprehensive unit and integration testing), providing confidence in Noah's ability to deliver personalized, culturally-aware reading experiences across multiple languages.
