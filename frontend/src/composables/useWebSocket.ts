@@ -68,13 +68,14 @@ export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
     }
   }
 
-  const sendMessage = (message: string, sessionId: string) => {
+  const sendMessage = (message: string, sessionId: string, metadata?: any) => {
     if (socket.value && isConnected.value) {
       const payload = {
         type: 'user_message',
         content: message,
         sessionId,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        metadata
       }
       socket.value.send(JSON.stringify(payload))
     }

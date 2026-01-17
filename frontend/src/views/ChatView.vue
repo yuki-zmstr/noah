@@ -19,14 +19,25 @@
                 ]"
               ></div>
               <span :class="isConnected ? 'text-green-600' : 'text-red-600'">
-                {{ isConnected ? "Connected" : "Disconnected" }}
+                {{
+                  isConnected
+                    ? languageStore.isEnglish
+                      ? "Connected"
+                      : "接続済み"
+                    : languageStore.isEnglish
+                      ? "Disconnected"
+                      : "切断済み"
+                }}
               </span>
             </div>
           </div>
         </div>
-        <RouterLink to="/preferences" class="btn-secondary text-sm">
-          Preferences
-        </RouterLink>
+        <div class="flex items-center space-x-3">
+          <LanguageToggle />
+          <RouterLink to="/preferences" class="btn-secondary text-sm">
+            {{ languageStore.isEnglish ? "Preferences" : "設定" }}
+          </RouterLink>
+        </div>
       </div>
     </header>
 
@@ -39,10 +50,19 @@
           v-if="!hasMessages"
           class="text-center text-gray-500 text-sm space-y-2"
         >
-          <div>Start a conversation with Noah about books and reading!</div>
+          <div>
+            {{
+              languageStore.isEnglish
+                ? "Start a conversation with Noah about books and reading!"
+                : "ノアと本や読書について会話を始めましょう！"
+            }}
+          </div>
           <div class="text-xs">
-            Try asking: "Can you recommend a good mystery novel?" or "I'm
-            feeling lucky!"
+            {{
+              languageStore.isEnglish
+                ? 'Try asking: "Can you recommend a good mystery novel?" or "I\'m feeling lucky!"'
+                : "試しに聞いてみてください：「良いミステリー小説を教えて」または「何かおすすめして」"
+            }}
           </div>
         </div>
 
@@ -95,7 +115,11 @@
           <input
             v-model="messageInput"
             type="text"
-            placeholder="Ask Noah for book recommendations..."
+            :placeholder="
+              languageStore.isEnglish
+                ? 'Ask Noah for book recommendations...'
+                : 'ノアに本のおすすめを聞いてみてください...'
+            "
             :disabled="!isConnected || isLoading"
             class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
             @keydown.enter.prevent="sendMessage"
@@ -105,7 +129,7 @@
             :disabled="!messageInput.trim() || !isConnected || isLoading"
             class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Send
+            {{ languageStore.isEnglish ? "Send" : "送信" }}
           </button>
         </form>
       </div>
@@ -117,13 +141,16 @@
 import { ref, onMounted, nextTick, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { useChatStore } from "@/stores/chat";
+import { useLanguageStore } from "@/stores/language";
 import { useWebSocket } from "@/composables/useWebSocket";
 import ChatMessage from "@/components/ChatMessage.vue";
 import TypingIndicator from "@/components/TypingIndicator.vue";
+import LanguageToggle from "@/components/LanguageToggle.vue";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
 
 // Store and composables
 const chatStore = useChatStore();
+const languageStore = useLanguageStore();
 const {
   isConnected,
   connectionError,
@@ -162,7 +189,9 @@ const sendMessage = async () => {
 
   // Send via WebSocket
   if (chatStore.currentSession) {
-    sendWebSocketMessage(message, chatStore.currentSession.sessionId);
+    sendWebSocketMessage(message, chatStore.currentSession.sessionId, {
+      language: languageStore.currentLanguage,
+    });
   }
 
   // Scroll to bottom
@@ -400,6 +429,7 @@ watch(connectionError, (error) => {
 
 // Initialize on mount
 onMounted(() => {
+  languageStore.initializeLanguage();
   chatStore.initializeSession(userId);
 
   // Join WebSocket session when connected

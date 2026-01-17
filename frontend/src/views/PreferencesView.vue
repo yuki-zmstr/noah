@@ -5,11 +5,17 @@
       <div class="flex items-center justify-between max-w-4xl mx-auto">
         <div class="flex items-center space-x-3">
           <RouterLink to="/" class="text-gray-500 hover:text-gray-700">
-            ← Back to Chat
+            {{
+              languageStore.isEnglish ? "← Back to Chat" : "← チャットに戻る"
+            }}
           </RouterLink>
         </div>
-        <h1 class="text-xl font-semibold text-gray-900">Reading Preferences</h1>
-        <div></div>
+        <h1 class="text-xl font-semibold text-gray-900">
+          {{ languageStore.isEnglish ? "Reading Preferences" : "読書設定" }}
+        </h1>
+        <div class="flex items-center">
+          <LanguageToggle />
+        </div>
       </div>
     </header>
 
@@ -17,27 +23,48 @@
     <div class="max-w-4xl mx-auto p-6">
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h2 class="text-lg font-semibold text-gray-900 mb-4">
-          Your Reading Profile
+          {{
+            languageStore.isEnglish
+              ? "Your Reading Profile"
+              : "あなたの読書プロフィール"
+          }}
         </h2>
         <p class="text-gray-600 mb-6">
-          Noah learns your preferences automatically, but you can view and
-          adjust them here.
+          {{
+            languageStore.isEnglish
+              ? "Noah learns your preferences automatically, but you can view and adjust them here."
+              : "ノアは自動的にあなたの好みを学習しますが、ここで確認・調整できます。"
+          }}
         </p>
 
         <div class="space-y-6">
           <!-- Language Preferences -->
           <div>
             <h3 class="text-md font-medium text-gray-900 mb-2">
-              Language Preferences
+              {{
+                languageStore.isEnglish ? "Language Preferences" : "言語設定"
+              }}
             </h3>
             <div class="grid grid-cols-2 gap-4">
               <div class="border border-gray-200 rounded-lg p-4">
                 <h4 class="font-medium text-gray-900">English</h4>
-                <p class="text-sm text-gray-600">Reading Level: Intermediate</p>
+                <p class="text-sm text-gray-600">
+                  {{
+                    languageStore.isEnglish
+                      ? "Reading Level: Intermediate"
+                      : "読解レベル: 中級"
+                  }}
+                </p>
               </div>
               <div class="border border-gray-200 rounded-lg p-4">
-                <h4 class="font-medium text-gray-900">Japanese</h4>
-                <p class="text-sm text-gray-600">Reading Level: Beginner</p>
+                <h4 class="font-medium text-gray-900">日本語</h4>
+                <p class="text-sm text-gray-600">
+                  {{
+                    languageStore.isEnglish
+                      ? "Reading Level: Beginner"
+                      : "読解レベル: 初級"
+                  }}
+                </p>
               </div>
             </div>
           </div>
@@ -45,23 +72,31 @@
           <!-- Favorite Genres -->
           <div>
             <h3 class="text-md font-medium text-gray-900 mb-2">
-              Favorite Genres
+              {{
+                languageStore.isEnglish ? "Favorite Genres" : "好きなジャンル"
+              }}
             </h3>
             <div class="flex flex-wrap gap-2">
               <span
                 class="px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm"
               >
-                Science Fiction
+                {{
+                  languageStore.isEnglish
+                    ? "Science Fiction"
+                    : "サイエンスフィクション"
+                }}
               </span>
               <span
                 class="px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm"
               >
-                Mystery
+                {{ languageStore.isEnglish ? "Mystery" : "ミステリー" }}
               </span>
               <span
                 class="px-3 py-1 bg-primary-100 text-primary-800 rounded-full text-sm"
               >
-                Non-fiction
+                {{
+                  languageStore.isEnglish ? "Non-fiction" : "ノンフィクション"
+                }}
               </span>
             </div>
           </div>
@@ -73,4 +108,8 @@
 
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import { useLanguageStore } from "@/stores/language";
+import LanguageToggle from "@/components/LanguageToggle.vue";
+
+const languageStore = useLanguageStore();
 </script>

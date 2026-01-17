@@ -403,7 +403,7 @@ class ContentProcessor:
         if not topics:
             words = word_tokenize(content.lower())
             nouns = [word for word in words if word.isalpha(
-            ) and word not in self.english_stopwords]
+            ) and word not in self.stopwords.get('english', set())]
             word_freq = {}
             for word in nouns:
                 word_freq[word] = word_freq.get(word, 0) + 1
