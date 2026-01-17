@@ -3,10 +3,25 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+import logging
 
 from src.config import settings
 from src.database import engine, Base
 from src.api.routes import api_router
+
+# Import all models to ensure they're registered with SQLAlchemy
+from src.models import (
+    UserProfile, ReadingBehavior, PreferenceSnapshot,
+    ContentItem, PurchaseLink, DiscoveryRecommendation,
+    ConversationSession, ConversationMessage, ConversationHistory
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO if not settings.debug else logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -41,8 +56,25 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         """Initialize database and other services on startup."""
+        logger.info("Starting Noah Reading Agent...")
+
         # Create database tables
-        Base.metadata.create_all(bind=engine)
+        try:
+            Base.metadata.create_all(bind=engine)
+            logger.info("Database tables created successfully")
+        except Exception as e:
+            logger.error(f"Error creating database tables: {e}")
+            raise
+
+        # Log registered models
+        registered_models = [
+            UserProfile.__name__, ReadingBehavior.__name__, PreferenceSnapshot.__name__,
+            ContentItem.__name__, PurchaseLink.__name__, DiscoveryRecommendation.__name__,
+            ConversationSession.__name__, ConversationMessage.__name__, ConversationHistory.__name__
+        ]
+        logger.info(f"Registered models: {', '.join(registered_models)}")
+
+        logger.info("Noah Reading Agent startup completed")
 
     @app.get("/health")
     async def health_check():

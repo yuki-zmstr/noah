@@ -14,8 +14,8 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
   - Set up development databases (PostgreSQL for profiles, Vector DB for content)
   - _Requirements: All system requirements_
 
-- [ ] 2. Implement core data models and database schema
-  - [ ] 2.1 Create database schemas for user profiles, content, and conversations
+- [x] 2. Implement core data models and database schema
+  - [x] 2.1 Create database schemas for user profiles, content, and conversations
     - Design PostgreSQL tables for user profiles, reading behavior, and preferences
     - Set up vector database schema for content embeddings and similarity search
     - Create conversation history and session management tables
@@ -25,7 +25,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Property 1: Comprehensive Reading Behavior Tracking**
     - **Validates: Requirements 1.1, 5.1**
 
-  - [ ] 2.3 Implement SQLAlchemy models and FastAPI schemas with AWS Agent Core integration
+  - [x] 2.3 Implement SQLAlchemy models and FastAPI schemas with AWS Agent Core integration
     - Create SQLAlchemy models for UserProfile, ContentItem, ConversationMessage, PurchaseLink
     - Add Pydantic schemas for API request/response validation
     - Configure database connections and session management with FastAPI

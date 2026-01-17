@@ -17,29 +17,34 @@ from .content import (
     PurchaseLinkResponse
 )
 from .conversation import (
-    ConversationMessageCreate,
-    ConversationMessageResponse,
     ConversationSessionCreate,
     ConversationSessionResponse,
+    ConversationMessageCreate,
+    ConversationMessageResponse,
     ConversationContext
 )
 
 __all__ = [
+    # User Profile schemas
     "UserProfileCreate",
     "UserProfileResponse",
     "PreferenceModel",
     "LanguageReadingLevels",
     "ReadingContext",
     "TopicPreference",
+
+    # Content schemas
     "ContentItemCreate",
     "ContentItemResponse",
     "ContentMetadata",
     "ContentAnalysis",
     "PurchaseLinkCreate",
     "PurchaseLinkResponse",
-    "ConversationMessageCreate",
-    "ConversationMessageResponse",
+
+    # Conversation schemas
     "ConversationSessionCreate",
     "ConversationSessionResponse",
-    "ConversationContext",
+    "ConversationMessageCreate",
+    "ConversationMessageResponse",
+    "ConversationContext"
 ]
