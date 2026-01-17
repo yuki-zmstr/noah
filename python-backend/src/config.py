@@ -43,12 +43,12 @@ class Settings(BaseSettings):
     amazon_associate_tag: str = ""
 
     # CORS - Handle as comma-separated string, then split
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
     @property
-    def allowed_origins(self) -> List[str]:
+    def cors_origins_list(self) -> List[str]:
         """Parse allowed origins from comma-separated string."""
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+        return [origin.strip() for origin in self.allowed_origins.split(",")]
 
     @property
     def database_connection_url(self) -> str:
