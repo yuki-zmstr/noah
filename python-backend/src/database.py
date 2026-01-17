@@ -10,7 +10,7 @@ from src.config import settings
 
 # Create SQLAlchemy engine
 engine = create_engine(
-    settings.database_url,
+    settings.database_connection_url,
     pool_pre_ping=True,
     pool_recycle=300,
     echo=settings.debug

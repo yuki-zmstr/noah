@@ -85,10 +85,17 @@ export const useChatStore = defineStore('chat', () => {
     return newMessage
   }
 
-  const updateStreamingMessage = (messageId: string, content: string, metadata?: ChatMessage['metadata']) => {
+  const updateStreamingMessage = (messageId: string, content: string, metadata?: ChatMessage['metadata'], append: boolean = false) => {
     const messageIndex = messages.value.findIndex(msg => msg.id === messageId)
     if (messageIndex !== -1) {
-      messages.value[messageIndex].content = content
+      if (append) {
+        // Append new content to existing content
+        messages.value[messageIndex].content += content
+      } else {
+        // Replace content (for backward compatibility)
+        messages.value[messageIndex].content = content
+      }
+      
       if (metadata) {
         messages.value[messageIndex].metadata = metadata
       }
@@ -97,7 +104,11 @@ export const useChatStore = defineStore('chat', () => {
       if (currentSession.value) {
         const sessionMessageIndex = currentSession.value.messages.findIndex(msg => msg.id === messageId)
         if (sessionMessageIndex !== -1) {
-          currentSession.value.messages[sessionMessageIndex].content = content
+          if (append) {
+            currentSession.value.messages[sessionMessageIndex].content += content
+          } else {
+            currentSession.value.messages[sessionMessageIndex].content = content
+          }
           if (metadata) {
             currentSession.value.messages[sessionMessageIndex].metadata = metadata
           }
@@ -106,8 +117,18 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const finalizeStreamingMessage = (messageId: string, finalContent: string, metadata?: ChatMessage['metadata']) => {
-    updateStreamingMessage(messageId, finalContent, metadata)
+  const appendToStreamingMessage = (messageId: string, content: string, metadata?: ChatMessage['metadata']) => {
+    updateStreamingMessage(messageId, content, metadata, true)
+  }
+
+  const finalizeStreamingMessage = (messageId: string, finalContent?: string, metadata?: ChatMessage['metadata']) => {
+    // If finalContent is provided, replace the entire content (for cases where backend sends complete message)
+    // Otherwise, just mark as finalized (content was already accumulated via chunks)
+    if (finalContent) {
+      updateStreamingMessage(messageId, finalContent, metadata, false)
+    } else if (metadata) {
+      updateStreamingMessage(messageId, '', metadata, false)
+    }
   }
 
   const clearMessages = () => {
@@ -159,6 +180,7 @@ export const useChatStore = defineStore('chat', () => {
     addNoahMessage,
     addStreamingMessage,
     updateStreamingMessage,
+    appendToStreamingMessage,
     finalizeStreamingMessage,
     clearMessages,
     setLoading,

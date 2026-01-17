@@ -211,8 +211,9 @@ const simulateNoahResponse = (userMessage: string) => {
     () => {
       isTyping.value = false;
 
-      // Generate mock response based on user message
-      let response = "I'd be happy to help you with that!";
+      // Generate mock response based on user message - match backend responses
+      let response =
+        "I'm Noah, your reading companion. How can I help you discover your next great read?";
       let messageType: ChatMessageType["type"] = "text";
       let metadata: ChatMessageType["metadata"] = undefined;
 
@@ -220,7 +221,8 @@ const simulateNoahResponse = (userMessage: string) => {
         userMessage.toLowerCase().includes("recommend") ||
         userMessage.toLowerCase().includes("book")
       ) {
-        response = "Here are some book recommendations I think you'd enjoy:";
+        response =
+          "I'd be happy to recommend some books for you! What genres or topics interest you?";
         messageType = "recommendation";
         metadata = {
           recommendations: [
@@ -251,7 +253,7 @@ const simulateNoahResponse = (userMessage: string) => {
         userMessage.toLowerCase().includes("discover")
       ) {
         response =
-          "I'm feeling adventurous! Here's something completely different from your usual reads:";
+          "Let's explore something new! I'll find some books outside your usual preferences.";
         messageType = "recommendation";
         metadata = {
           recommendations: [
@@ -271,7 +273,8 @@ const simulateNoahResponse = (userMessage: string) => {
         userMessage.toLowerCase().includes("buy") ||
         userMessage.toLowerCase().includes("purchase")
       ) {
-        response = "Here are some places where you can find this book:";
+        response =
+          "I can help you find where to buy that book. Let me generate some purchase links for you.";
         messageType = "purchase_links";
         metadata = {
           purchaseLinks: [
@@ -323,15 +326,15 @@ onMessage((message: ChatMessageType) => {
 // Handle streaming message chunks
 onMessageChunk((chunk) => {
   if (!currentStreamingMessage.value) {
-    // Start a new streaming message
+    // Start a new streaming message with the first chunk
     currentStreamingMessage.value = chatStore.addStreamingMessage(
       chunk.content,
     );
   } else {
-    // Update existing streaming message
-    chatStore.updateStreamingMessage(
+    // Append new chunk to existing streaming message with a space separator
+    chatStore.appendToStreamingMessage(
       currentStreamingMessage.value.id,
-      chunk.content,
+      " " + chunk.content,
     );
   }
 
@@ -380,10 +383,8 @@ onPurchaseLinks((data) => {
 // Handle message completion
 onMessageComplete((data) => {
   if (currentStreamingMessage.value) {
-    chatStore.finalizeStreamingMessage(
-      currentStreamingMessage.value.id,
-      currentStreamingMessage.value.content,
-    );
+    // Finalize the streaming message (content is already accumulated from chunks)
+    chatStore.finalizeStreamingMessage(currentStreamingMessage.value.id);
     currentStreamingMessage.value = null;
   }
   nextTick(() => scrollToBottom());

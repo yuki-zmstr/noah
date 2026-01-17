@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
+from datetime import datetime
 
 from src.database import get_db
 from src.models.conversation import ConversationSession, ConversationMessage
@@ -14,6 +16,89 @@ from src.schemas.conversation import (
 )
 
 router = APIRouter()
+
+
+@router.post("/test-message")
+async def test_message_functionality(
+    message: dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Test endpoint for basic message functionality with hardcoded responses.
+    This endpoint is used to validate production deployment.
+    """
+    user_message = message.get("content", "").lower()
+    user_id = message.get("user_id", "test-user")
+
+    # Hardcoded responses for testing
+    if "hello" in user_message or "hi" in user_message:
+        response = "Hello! I'm Noah, your reading agent. I'm here to help you discover amazing books!"
+    elif "book" in user_message or "recommend" in user_message:
+        response = "I'd love to recommend some books! What genres do you enjoy reading?"
+    elif "help" in user_message:
+        response = "I can help you find books, get reading recommendations, and discover new authors. What would you like to explore?"
+    elif "test" in user_message:
+        response = "Test successful! The production deployment is working correctly. 🎉"
+    else:
+        response = "I'm Noah, your AI reading companion! I'm currently in test mode. Try saying 'hello', 'recommend a book', or 'help'."
+
+    # Create a test session if it doesn't exist
+    session_id = f"test-session-{user_id}"
+    session = db.query(ConversationSession).filter(
+        ConversationSession.session_id == session_id
+    ).first()
+
+    if not session:
+        session = ConversationSession(
+            session_id=session_id,
+            user_id=user_id,
+            context={"test_mode": True},
+            is_persistent=False
+        )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+
+    # Store the user message
+    user_msg = ConversationMessage(
+        message_id=str(uuid.uuid4()),
+        session_id=session_id,
+        sender="user",
+        content=message.get("content", ""),
+        intent={"type": "test_message"}
+    )
+    db.add(user_msg)
+
+    # Store the bot response
+    bot_msg = ConversationMessage(
+        message_id=str(uuid.uuid4()),
+        session_id=session_id,
+        sender="noah",
+        content=response,
+        intent={"type": "test_response"}
+    )
+    db.add(bot_msg)
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "user_message": message.get("content", ""),
+        "bot_response": response,
+        "session_id": session_id,
+        "timestamp": datetime.utcnow().isoformat(),
+        "test_mode": True
+    }
+
+
+@router.get("/health")
+async def conversation_health_check():
+    """Health check for conversation service."""
+    return {
+        "status": "healthy",
+        "service": "conversation",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 
 @router.post("/sessions", response_model=ConversationSessionResponse)
