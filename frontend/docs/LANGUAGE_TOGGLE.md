@@ -102,3 +102,29 @@ Potential improvements:
 - Implement full i18n with translation files
 - Add language-specific content recommendations
 - Support for mixed-language conversations
+
+## Reactivity Best Practices
+
+When using Pinia stores in Vue 3 components, avoid destructuring computed properties as it breaks reactivity:
+
+```vue
+<!-- ❌ WRONG - Breaks reactivity -->
+<script setup>
+const { sortedMessages, hasMessages } = chatStore;
+</script>
+
+<!-- ✅ CORRECT - Maintains reactivity -->
+<script setup>
+const chatStore = useChatStore();
+</script>
+
+<template>
+  <div v-if="chatStore.hasMessages">
+    <div v-for="message in chatStore.sortedMessages" :key="message.id">
+      {{ message.content }}
+    </div>
+  </div>
+</template>
+```
+
+This pattern is used consistently throughout the application for both the language store and chat store to ensure proper reactivity.
