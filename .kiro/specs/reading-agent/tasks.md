@@ -98,14 +98,14 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
   - Verify conversation flow with basic recommendation requests
   - Ask the user if questions arise
 
-- [ ] 7. Implement recommendation and discovery systems
-  - [ ] 7.1 Build contextual recommendation engine
+- [x] 7. Implement recommendation and discovery systems
+  - [x] 7.1 Build contextual recommendation engine
     - Create recommendation algorithm considering interest scores, reading level, and context
     - Implement time-based and mood-based filtering
     - Add diversity mechanisms to prevent filter bubbles
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ] 7.2 Create discovery mode ("I'm feeling lucky") engine
+  - [x] 7.2 Create discovery mode ("I'm feeling lucky") engine
     - Build genre and topic exploration algorithms
     - Implement serendipitous recommendation using collaborative filtering
     - Add discovery tracking and user response analysis
