@@ -488,6 +488,9 @@ class ConversationService:
             parts = session_id.split('_')
             user_id = parts[1] if len(parts) >= 2 else "anonymous"
 
+            # Ensure user profile exists
+            await self._ensure_user_profile_exists(user_id, db)
+
             session = ConversationSession(
                 session_id=session_id,
                 user_id=user_id,
@@ -504,6 +507,34 @@ class ConversationService:
             db.refresh(session)
 
         return session
+
+    async def _ensure_user_profile_exists(self, user_id: str, db: Session) -> UserProfile:
+        """Ensure a user profile exists, create if it doesn't."""
+        user_profile = db.query(UserProfile).filter(
+            UserProfile.user_id == user_id
+        ).first()
+
+        if not user_profile:
+            # Create a new user profile with default settings
+            user_profile = UserProfile(
+                user_id=user_id,
+                preferences={
+                    "topics": [],
+                    "content_types": [],
+                    "contextual_preferences": [],
+                    "evolution_history": []
+                },
+                reading_levels={
+                    "english": {"level": 5.0, "confidence": 0.5},
+                    "japanese": {"level": 3.0, "confidence": 0.5}
+                }
+            )
+            db.add(user_profile)
+            db.commit()
+            db.refresh(user_profile)
+            logger.info(f"Created new user profile for user_id: {user_id}")
+
+        return user_profile
 
     async def _store_message(
         self,

@@ -153,7 +153,7 @@ const userId = "user_" + Math.random().toString(36).substr(2, 9);
 
 // Methods
 const sendMessage = async () => {
-  const message = messageInput.trim();
+  const message = messageInput.value.trim();
   if (!message || !isConnected.value) return;
 
   // Add user message to store
