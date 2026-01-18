@@ -1,0 +1,388 @@
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to rollback"
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+      reason:
+        description: "Reason for rollback"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "ROLLBACK" to confirm'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  # Validate rollback request
+  validate-rollback:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      validated: ${{ steps.validate.outputs.validated }}
+      environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Validate confirmation
+        id: validate
+        run: |
+          if [[ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]]; then
+            echo "❌ Rollback not confirmed. Please type 'ROLLBACK' to confirm."
+            exit 1
+          fi
+
+          if [[ -z "${{ github.event.inputs.reason }}" ]]; then
+            echo "❌ Rollback reason is required."
+            exit 1
+          fi
+
+          echo "validated=true" >> $GITHUB_OUTPUT
+          echo "✅ Rollback request validated"
+
+      - name: Log rollback initiation
+        run: |
+          echo "🚨 EMERGENCY ROLLBACK INITIATED"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo "Initiated by: ${{ github.actor }}"
+          echo "Timestamp: $(date -u)"
+
+  # Production rollback
+  rollback-production:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.validated == 'true' && github.event.inputs.environment == 'production'
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get current deployment state
+        id: current-state
+        run: |
+          ECS_CLUSTER="NoahInfrastructureStack-NoahCluster"
+          BLUE_SERVICE="NoahInfrastructureStack-NoahBackendService-blue"
+          GREEN_SERVICE="NoahInfrastructureStack-NoahBackendService-green"
+
+          # Check which service is currently active
+          BLUE_DESIRED=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $BLUE_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+          GREEN_DESIRED=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $GREEN_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+
+          if [[ "$BLUE_DESIRED" != "0" ]]; then
+            echo "current=blue" >> $GITHUB_OUTPUT
+            echo "rollback_to=green" >> $GITHUB_OUTPUT
+            echo "current_service=$BLUE_SERVICE" >> $GITHUB_OUTPUT
+            echo "rollback_service=$GREEN_SERVICE" >> $GITHUB_OUTPUT
+          else
+            echo "current=green" >> $GITHUB_OUTPUT
+            echo "rollback_to=blue" >> $GITHUB_OUTPUT
+            echo "current_service=$GREEN_SERVICE" >> $GITHUB_OUTPUT
+            echo "rollback_service=$BLUE_SERVICE" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Current active: ${{ steps.current-state.outputs.current }}"
+          echo "Rolling back to: ${{ steps.current-state.outputs.rollback_to }}"
+
+      - name: Check rollback service availability
+        env:
+          ROLLBACK_SERVICE: ${{ steps.current-state.outputs.rollback_service }}
+          ECS_CLUSTER: NoahInfrastructureStack-NoahCluster
+        run: |
+          # Check if rollback service exists and has a valid task definition
+          SERVICE_STATUS=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ROLLBACK_SERVICE --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
+
+          if [[ "$SERVICE_STATUS" == "MISSING" || "$SERVICE_STATUS" == "INACTIVE" ]]; then
+            echo "❌ Rollback service $ROLLBACK_SERVICE is not available or inactive"
+            echo "Cannot perform rollback - no previous version available"
+            exit 1
+          fi
+
+          echo "✅ Rollback service $ROLLBACK_SERVICE is available"
+
+      - name: Perform emergency rollback
+        env:
+          CURRENT_SERVICE: ${{ steps.current-state.outputs.current_service }}
+          ROLLBACK_SERVICE: ${{ steps.current-state.outputs.rollback_service }}
+          ECS_CLUSTER: NoahInfrastructureStack-NoahCluster
+        run: |
+          echo "🚨 Starting emergency rollback..."
+          echo "From: $CURRENT_SERVICE"
+          echo "To: $ROLLBACK_SERVICE"
+
+          # Get target group ARNs
+          CURRENT_TG_ARN=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $CURRENT_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+          ROLLBACK_TG_ARN=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ROLLBACK_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+
+          # Get load balancer listener
+          LOAD_BALANCER_ARN=$(aws elbv2 describe-target-groups --target-group-arns $CURRENT_TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $LOAD_BALANCER_ARN --query 'Listeners[0].ListenerArn' --output text)
+
+          # Scale up rollback service immediately
+          echo "Scaling up rollback service..."
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ROLLBACK_SERVICE \
+            --desired-count 2
+
+          # Wait for rollback service to be ready
+          echo "Waiting for rollback service to be ready..."
+          aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ROLLBACK_SERVICE
+
+          # Verify rollback service health
+          echo "Verifying rollback service health..."
+          ROLLBACK_LB_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $LOAD_BALANCER_ARN --query 'LoadBalancers[0].DNSName' --output text)
+
+          # Test rollback service (using target group health)
+          for i in {1..30}; do
+            HEALTHY_TARGETS=$(aws elbv2 describe-target-health --target-group-arn $ROLLBACK_TG_ARN --query 'length(TargetHealthDescriptions[?TargetHealth.State==`healthy`])' --output text)
+            if [[ "$HEALTHY_TARGETS" -gt 0 ]]; then
+              echo "✅ Rollback service is healthy ($HEALTHY_TARGETS healthy targets)"
+              break
+            fi
+            echo "Waiting for rollback service to be healthy... ($i/30)"
+            sleep 10
+          done
+
+          # Switch traffic immediately to rollback service
+          echo "Switching traffic to rollback service..."
+          aws elbv2 modify-listener \
+            --listener-arn $LISTENER_ARN \
+            --default-actions Type=forward,TargetGroupArn=$ROLLBACK_TG_ARN
+
+          # Verify traffic switch
+          sleep 30
+          curl -f "http://$ROLLBACK_LB_DNS/health" || {
+            echo "❌ Health check failed after traffic switch"
+            exit 1
+          }
+
+          echo "✅ Traffic successfully switched to rollback service"
+
+          # Scale down current service
+          echo "Scaling down current service..."
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $CURRENT_SERVICE \
+            --desired-count 0
+
+          echo "🎉 Emergency rollback completed successfully!"
+
+      - name: Verify rollback success
+        env:
+          ECS_CLUSTER: NoahInfrastructureStack-NoahCluster
+          ROLLBACK_SERVICE: ${{ steps.current-state.outputs.rollback_service }}
+        run: |
+          # Get load balancer DNS
+          ROLLBACK_TG_ARN=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ROLLBACK_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+          LOAD_BALANCER_ARN=$(aws elbv2 describe-target-groups --target-group-arns $ROLLBACK_TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+          LOAD_BALANCER_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $LOAD_BALANCER_ARN --query 'LoadBalancers[0].DNSName' --output text)
+
+          echo "Verifying rollback deployment..."
+
+          # Test multiple endpoints
+          curl -f "http://$LOAD_BALANCER_DNS/health" || exit 1
+          curl -f "http://$LOAD_BALANCER_DNS/api/config" || exit 1
+
+          # Test performance
+          for i in {1..5}; do
+            start_time=$(date +%s%N)
+            curl -s "http://$LOAD_BALANCER_DNS/health" > /dev/null
+            end_time=$(date +%s%N)
+            duration=$(( (end_time - start_time) / 1000000 ))
+            echo "Response time $i: ${duration}ms"
+            
+            if [ $duration -gt 5000 ]; then
+              echo "⚠️ Slow response detected: ${duration}ms"
+            fi
+          done
+
+          echo "✅ Rollback verification completed"
+
+  # Staging rollback
+  rollback-staging:
+    name: Rollback Staging
+    runs-on: ubuntu-latest
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.validated == 'true' && github.event.inputs.environment == 'staging'
+    environment: staging
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_STAGING }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback staging deployment
+        run: |
+          ECS_CLUSTER="NoahStagingStack-NoahCluster"
+          ECS_SERVICE="NoahStagingStack-NoahBackendService"
+
+          echo "🚨 Rolling back staging environment..."
+
+          # Get current task definition
+          CURRENT_TASK_DEF=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].taskDefinition' --output text)
+
+          # Get the revision number and decrement it
+          CURRENT_REVISION=$(echo $CURRENT_TASK_DEF | grep -o '[0-9]*$')
+          PREVIOUS_REVISION=$((CURRENT_REVISION - 1))
+
+          if [ $PREVIOUS_REVISION -gt 0 ]; then
+            ROLLBACK_TASK_DEF=$(echo $CURRENT_TASK_DEF | sed "s/:$CURRENT_REVISION$/:$PREVIOUS_REVISION/")
+            
+            echo "Rolling back from revision $CURRENT_REVISION to $PREVIOUS_REVISION"
+            
+            # Update service to previous task definition
+            aws ecs update-service \
+              --cluster $ECS_CLUSTER \
+              --service $ECS_SERVICE \
+              --task-definition $ROLLBACK_TASK_DEF
+            
+            # Wait for rollback to complete
+            aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE
+            
+            echo "✅ Staging rollback completed"
+          else
+            echo "❌ No previous revision available for rollback"
+            exit 1
+          fi
+
+  # Post-rollback actions
+  post-rollback:
+    name: Post-Rollback Actions
+    runs-on: ubuntu-latest
+    needs: [validate-rollback, rollback-production, rollback-staging]
+    if: always() && needs.validate-rollback.outputs.validated == 'true'
+
+    steps:
+      - name: Determine rollback result
+        id: result
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            RESULT="${{ needs.rollback-production.result }}"
+          else
+            RESULT="${{ needs.rollback-staging.result }}"
+          fi
+
+          echo "result=$RESULT" >> $GITHUB_OUTPUT
+
+      - name: Create incident report
+        if: steps.result.outputs.result == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🚨 Emergency Rollback - ${{ github.event.inputs.environment }}`;
+            const body = `## Emergency Rollback Report
+
+            **Environment:** ${{ github.event.inputs.environment }}
+            **Status:** ✅ Completed Successfully
+            **Initiated by:** ${{ github.actor }}
+            **Timestamp:** ${new Date().toISOString()}
+            **Reason:** ${{ github.event.inputs.reason }}
+
+            ### Actions Taken
+            - Emergency rollback initiated
+            - Traffic switched to previous stable version
+            - Current deployment scaled down
+            - System health verified
+
+            ### Next Steps
+            - [ ] Investigate root cause of the issue
+            - [ ] Fix identified problems
+            - [ ] Plan new deployment with fixes
+            - [ ] Update monitoring and alerting if needed
+
+            ### Timeline
+            - **Rollback Initiated:** ${new Date().toISOString()}
+            - **Rollback Completed:** ${new Date().toISOString()}
+
+            This incident should be reviewed in the next team meeting.
+            `;
+
+            // Create an issue for incident tracking
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['incident', 'rollback', '${{ github.event.inputs.environment }}']
+            });
+
+            console.log(`Created incident report: ${issue.data.html_url}`);
+
+      - name: Send notifications
+        if: steps.result.outputs.result == 'success'
+        run: |
+          echo "📧 Rollback completed successfully!"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Reason: ${{ github.event.inputs.reason }}"
+          echo "Initiated by: ${{ github.actor }}"
+
+          # In a real environment, you would send notifications to:
+          # - Slack/Teams channels
+          # - Email distribution lists
+          # - PagerDuty/incident management systems
+          # - Status page updates
+
+      - name: Handle rollback failure
+        if: steps.result.outputs.result == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🔥 CRITICAL: Rollback Failed - ${{ github.event.inputs.environment }}`;
+            const body = `## CRITICAL: Emergency Rollback Failed
+
+            **Environment:** ${{ github.event.inputs.environment }}
+            **Status:** ❌ FAILED
+            **Initiated by:** ${{ github.actor }}
+            **Timestamp:** ${new Date().toISOString()}
+            **Reason:** ${{ github.event.inputs.reason }}
+
+            ### ⚠️ IMMEDIATE ACTION REQUIRED
+
+            The automated rollback has failed. Manual intervention is required immediately.
+
+            ### Recommended Actions
+            1. **Immediate:** Check AWS console for service status
+            2. **Immediate:** Verify load balancer configuration
+            3. **Immediate:** Check ECS service logs
+            4. **Immediate:** Consider manual rollback via AWS console
+            5. **If needed:** Contact on-call engineer
+
+            ### Escalation
+            - [ ] Notify on-call engineer
+            - [ ] Escalate to senior engineering team
+            - [ ] Consider activating incident response team
+
+            **This is a critical production issue requiring immediate attention.**
+            `;
+
+            // Create critical issue
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['critical', 'incident', 'rollback-failed', '${{ github.event.inputs.environment }}']
+            });
+
+            console.log(`Created critical incident: ${issue.data.html_url}`);
+
+            // Exit with error to mark workflow as failed
+            process.exit(1);

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -10,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from src.database import get_db
 from src.services.enhanced_conversation_service import EnhancedConversationService
+from src.services.monitoring_service import monitoring_service
+from src.services.logging_config import performance_logger
 from src.models.conversation import ConversationSession, ConversationMessage
 from src.models.user_profile import UserProfile
 from datetime import datetime
@@ -39,12 +42,25 @@ async def stream_chat_response(
     db: Session = Depends(get_db)
 ):
     """Stream chat response using Strands agents."""
+    start_time = time.time()
+    
     try:
+        # Track chat interaction start
+        monitoring_service.track_user_engagement(
+            user_id=request.user_id,
+            action="chat_message_sent",
+            session_id=request.session_id,
+            metadata={"message_length": len(request.message)}
+        )
+        
         # Get or create session (handled by conversation service)
         # Store user message (handled by conversation service)
         
         # Create streaming response
         async def generate_stream():
+            response_start_time = time.time()
+            chunk_count = 0
+            
             try:
                 # Stream response from enhanced conversation service
                 async for chunk in conversation_service.process_conversation_stream(
@@ -54,10 +70,40 @@ async def stream_chat_response(
                     db=db,
                     metadata=request.metadata
                 ):
+                    chunk_count += 1
                     yield f"data: {json.dumps(chunk)}\n\n"
+                
+                # Track successful completion
+                response_time_ms = (time.time() - response_start_time) * 1000
+                
+                monitoring_service.track_chat_interaction(
+                    user_id=request.user_id,
+                    message_type="streaming_response",
+                    response_time_ms=response_time_ms,
+                    success=True
+                )
+                
+                performance_logger.log_user_interaction(
+                    user_id=request.user_id,
+                    action="chat_stream_completed",
+                    duration_ms=response_time_ms,
+                    metadata={
+                        "chunk_count": chunk_count,
+                        "session_id": request.session_id
+                    }
+                )
                     
             except Exception as e:
                 logger.error(f"Error in stream generation: {e}")
+                
+                # Track streaming error
+                monitoring_service.track_chat_interaction(
+                    user_id=request.user_id,
+                    message_type="streaming_response",
+                    success=False,
+                    error_type=type(e).__name__
+                )
+                
                 error_data = {
                     "type": "error",
                     "content": "I'm sorry, I encountered an issue processing your message. Please try again!",
@@ -76,7 +122,19 @@ async def stream_chat_response(
         )
         
     except Exception as e:
+        duration_ms = (time.time() - start_time) * 1000
+        
         logger.error(f"Error starting chat stream: {e}")
+        
+        # Track chat stream initialization error
+        monitoring_service.track_chat_interaction(
+            user_id=request.user_id,
+            message_type="stream_initialization",
+            response_time_ms=duration_ms,
+            success=False,
+            error_type=type(e).__name__
+        )
+        
         raise HTTPException(status_code=500, detail="Failed to start chat stream")
 
 

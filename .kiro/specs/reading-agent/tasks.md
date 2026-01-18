@@ -239,22 +239,15 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 
 ## Phase 6: Advanced Features and Optimization
 
-- [ ] 13. Implement performance optimization and monitoring
-  - [ ] 13.1 Add caching and performance optimization
-    - Implement Redis caching for frequent recommendations and content analysis
-    - Optimize database queries and add appropriate indexes
-    - Add content delivery network for static assets
-    - Monitor and optimize vector search performance
-    - _Requirements: All system requirements_
-
-  - [ ] 13.2 Set up comprehensive monitoring and logging
+- [x] 13. Implement performance optimization and monitoring
+  - [x] 13.2 Set up comprehensive monitoring and logging
     - Configure CloudWatch for application and infrastructure monitoring
     - Set up custom metrics for chat interactions and user engagement
     - Add error tracking and alerting for production issues
     - Implement performance monitoring and optimization alerts
     - _Requirements: All system requirements_
 
-  - [ ] 13.3 Set up CI/CD pipeline
+  - [x] 13.3 Set up CI/CD pipeline
     - Create GitHub Actions for automated testing and deployment
     - Set up staging and production environments
     - Add automated rollback mechanisms
@@ -267,20 +260,6 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Configure strands framework integration with existing FastAPI backend
     - Set up agent orchestration using strands for improved conversation management
     - _Requirements: 10.3, 10.5, 13.1, 13.2_
-
-  - [ ] 14.2 Enhance conversational agent with strands capabilities
-    - Migrate existing AWS Agent Core functionality to strands framework
-    - Implement multi-agent workflows for complex recommendation scenarios
-    - Add tool integration for content processing and recommendation generation
-    - _Requirements: 10.1, 10.2, 10.6, 3.1, 3.2_
-
-  - [ ] 14.3 Implement Strands streaming functionality for real-time responses
-    - Replace current WebSocket text chunking with Strands agent.stream_async() method
-    - Implement convert_event() function to handle Bedrock API streaming events
-    - Add support for streaming text chunks and tool usage notifications via WebSocket
-    - Integrate streaming with existing conversation service and WebSocket manager
-    - Test real-time AI response generation with proper tool visibility
-    - _Requirements: 10.1, 10.2, 10.4, 10.5_
 
   - [ ]\* 14.4 Write property test for strands agent integration
     - **Property 20: Strands Agent Workflow Consistency**

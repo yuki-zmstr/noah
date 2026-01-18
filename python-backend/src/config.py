@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     # CORS - Handle as comma-separated string, then split
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
+    # Monitoring Configuration
+    monitoring_enabled: bool = True
+    cloudwatch_enabled: bool = True
+    metrics_flush_interval_seconds: int = 300  # 5 minutes
+    performance_alert_threshold_ms: float = 5000.0  # 5 seconds
+    error_alert_enabled: bool = True
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse allowed origins from comma-separated string."""

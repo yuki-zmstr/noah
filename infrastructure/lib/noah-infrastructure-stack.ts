@@ -3,7 +3,6 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as rds from 'aws-cdk-lib/aws-rds'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
 import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns'
-import * as opensearch from 'aws-cdk-lib/aws-opensearchservice'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
@@ -12,8 +11,9 @@ import * as iam from 'aws-cdk-lib/aws-iam'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
-import * as bedrock from 'aws-cdk-lib/aws-bedrock'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
+import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager'
+import * as route53 from 'aws-cdk-lib/aws-route53'
 import { Construct } from 'constructs'
 
 export class NoahInfrastructureStack extends cdk.Stack {
@@ -200,7 +200,7 @@ export class NoahInfrastructureStack extends cdk.Stack {
           OPENSEARCH_ENDPOINT: 'disabled-for-initial-deployment',
           
           // CORS configuration
-          ALLOWED_ORIGINS: 'http://localhost:5173,https://localhost:5173',
+          ALLOWED_ORIGINS: 'http://localhost:5173,https://localhost:5173,https://d33z9owyqf2ey4.cloudfront.net,https://master.d7603dy3bkh3g.amplifyapp.com',
         },
         secrets: {
           DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(database.secret!, 'password'),
@@ -227,32 +227,18 @@ export class NoahInfrastructureStack extends cdk.Stack {
       unhealthyThresholdCount: 5,
     })
 
-    // Create key pair for bastion host
-    const bastionKeyPair = new ec2.KeyPair(this, 'NoahBastionKeyPair', {
-      keyPairName: 'noah-bastion-key',
-      type: ec2.KeyPairType.RSA,
-      format: ec2.KeyPairFormat.PEM,
-    })
-
-    // IAM role for bastion host with SSM permissions
-    const bastionRole = new iam.Role(this, 'NoahBastionRole', {
-      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
-      ],
-    })
-
     // Bastion Host for database access
     const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
       vpc,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
       machineImage: ec2.MachineImage.latestAmazonLinux2(),
-      keyPair: bastionKeyPair,
-      role: bastionRole,
       subnetSelection: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
     })
+
+    // Add the SSM role to the bastion host after creation
+    bastionHost.role.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'))
 
     // Allow SSH access to bastion host from anywhere (you can restrict this to your IP)
     bastionHost.allowSshAccessFrom(ec2.Peer.anyIpv4())
@@ -474,11 +460,6 @@ export class NoahInfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ContentBucketName', {
       value: contentBucket.bucketName,
       description: 'S3 bucket for content storage',
-    })
-
-    new cdk.CfnOutput(this, 'BastionHostKeyPairName', {
-      value: bastionKeyPair.keyPairName,
-      description: 'Bastion Host Key Pair Name',
     })
 
     new cdk.CfnOutput(this, 'BastionHostPublicIP', {

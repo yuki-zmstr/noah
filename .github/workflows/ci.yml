@@ -1,0 +1,375 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: "18"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # Frontend Tests
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+
+      - name: Run type checking
+        run: npm run type-check
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Upload frontend build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist/
+          retention-days: 7
+
+  # Backend Tests
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./python-backend
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: noah_test
+          POSTGRES_USER: noah_user
+          POSTGRES_PASSWORD: noah_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run linting
+        run: uv run ruff check .
+
+      - name: Run formatting check
+        run: uv run black --check .
+
+      - name: Run type checking
+        run: uv run mypy src/
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql://noah_user:noah_password@localhost:5432/noah_test
+          REDIS_URL: redis://localhost:6379
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+        run: uv run pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./python-backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: |
+            python-backend/htmlcov/
+            python-backend/coverage.xml
+          retention-days: 7
+
+  # Security Scanning
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+      - name: Setup Python for backend security scan
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install safety
+        run: pip install safety
+
+      - name: Run safety check on backend
+        working-directory: ./python-backend
+        run: safety check --json --output safety-report.json || true
+
+      - name: Upload safety report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            trivy-results.sarif
+            python-backend/safety-report.json
+          retention-days: 30
+
+  # Integration Tests
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [frontend-test, backend-test]
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: noah_integration
+          POSTGRES_USER: noah_user
+          POSTGRES_PASSWORD: noah_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install backend dependencies
+        working-directory: ./python-backend
+        run: uv sync
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Start backend server
+        working-directory: ./python-backend
+        env:
+          DATABASE_URL: postgresql://noah_user:noah_password@localhost:5432/noah_integration
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_TEST }}
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION: us-east-1
+          DEBUG: false
+        run: |
+          uv run uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+          echo $! > backend.pid
+          sleep 10
+
+      - name: Wait for backend to be ready
+        run: |
+          timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 1; done'
+
+      - name: Run integration tests
+        working-directory: ./python-backend
+        env:
+          API_BASE_URL: http://localhost:8000
+          DATABASE_URL: postgresql://noah_user:noah_password@localhost:5432/noah_integration
+        run: uv run pytest tests/test_integration_*.py -v
+
+      - name: Stop backend server
+        if: always()
+        run: |
+          if [ -f python-backend/backend.pid ]; then
+            kill $(cat python-backend/backend.pid) || true
+          fi
+
+  # Build and Test Docker Images
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: [frontend-test, backend-test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./python-backend
+          file: ./python-backend/Dockerfile
+          push: false
+          tags: noah-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test backend Docker image
+        run: |
+          docker run --rm -d --name noah-backend-test \
+            -p 8000:8000 \
+            -e DATABASE_URL=sqlite:///test.db \
+            -e AWS_ACCESS_KEY_ID=test \
+            -e AWS_SECRET_ACCESS_KEY=test \
+            -e AWS_REGION=us-east-1 \
+            noah-backend:test
+
+          sleep 10
+
+          # Test health endpoint
+          curl -f http://localhost:8000/health || exit 1
+
+          # Stop container
+          docker stop noah-backend-test
+
+  # Quality Gates
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs:
+      [
+        frontend-test,
+        backend-test,
+        security-scan,
+        integration-test,
+        docker-build,
+      ]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "Frontend tests: ${{ needs.frontend-test.result }}"
+          echo "Backend tests: ${{ needs.backend-test.result }}"
+          echo "Security scan: ${{ needs.security-scan.result }}"
+          echo "Integration tests: ${{ needs.integration-test.result }}"
+          echo "Docker build: ${{ needs.docker-build.result }}"
+
+          if [[ "${{ needs.frontend-test.result }}" != "success" || \
+                "${{ needs.backend-test.result }}" != "success" || \
+                "${{ needs.integration-test.result }}" != "success" || \
+                "${{ needs.docker-build.result }}" != "success" ]]; then
+            echo "Quality gate failed!"
+            exit 1
+          fi
+
+          echo "Quality gate passed!"
+
+      - name: Post quality gate results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const results = {
+              frontend: '${{ needs.frontend-test.result }}',
+              backend: '${{ needs.backend-test.result }}',
+              security: '${{ needs.security-scan.result }}',
+              integration: '${{ needs.integration-test.result }}',
+              docker: '${{ needs.docker-build.result }}'
+            };
+
+            const passed = Object.values(results).every(r => r === 'success');
+            const status = passed ? '✅ PASSED' : '❌ FAILED';
+
+            const body = `## Quality Gate Results ${status}
+
+            | Check | Status |
+            |-------|--------|
+            | Frontend Tests | ${results.frontend === 'success' ? '✅' : '❌'} |
+            | Backend Tests | ${results.backend === 'success' ? '✅' : '❌'} |
+            | Security Scan | ${results.security === 'success' ? '✅' : '❌'} |
+            | Integration Tests | ${results.integration === 'success' ? '✅' : '❌'} |
+            | Docker Build | ${results.docker === 'success' ? '✅' : '❌'} |
+            `;
+
+            // Add comment to PR if this is a pull request
+            if (context.eventName === 'pull_request') {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }

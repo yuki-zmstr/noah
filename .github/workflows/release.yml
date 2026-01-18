@@ -1,0 +1,456 @@
+name: Blue-Green Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release"
+        required: true
+        type: string
+      rollback:
+        description: "Rollback to previous version"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: ap-northeast-1
+  ECR_REPOSITORY: noah-backend
+  ECS_CLUSTER: NoahInfrastructureStack-NoahCluster
+  ECS_SERVICE: NoahInfrastructureStack-NoahBackendService
+  AMPLIFY_APP_ID: d1234567890123
+
+jobs:
+  # Prepare release
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      rollback: ${{ steps.version.outputs.rollback }}
+      blue_service: ${{ steps.services.outputs.blue }}
+      green_service: ${{ steps.services.outputs.green }}
+      current_service: ${{ steps.services.outputs.current }}
+
+    steps:
+      - name: Determine version and rollback
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "rollback=${{ github.event.inputs.rollback }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "rollback=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine blue-green services
+        id: services
+        run: |
+          # Define blue and green service names
+          BLUE_SERVICE="${{ env.ECS_SERVICE }}-blue"
+          GREEN_SERVICE="${{ env.ECS_SERVICE }}-green"
+
+          # Check which service is currently active
+          BLUE_DESIRED=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $BLUE_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+          GREEN_DESIRED=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $GREEN_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
+
+          if [[ "$BLUE_DESIRED" != "0" ]]; then
+            CURRENT_SERVICE="blue"
+            TARGET_SERVICE="green"
+          else
+            CURRENT_SERVICE="green"
+            TARGET_SERVICE="blue"
+          fi
+
+          echo "blue=$BLUE_SERVICE" >> $GITHUB_OUTPUT
+          echo "green=$GREEN_SERVICE" >> $GITHUB_OUTPUT
+          echo "current=$CURRENT_SERVICE" >> $GITHUB_OUTPUT
+          echo "target=$TARGET_SERVICE" >> $GITHUB_OUTPUT
+
+          echo "Current active service: $CURRENT_SERVICE"
+          echo "Target deployment service: $TARGET_SERVICE"
+
+  # Build and deploy to inactive environment
+  deploy-inactive:
+    name: Deploy to Inactive Environment
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    if: needs.prepare-release.outputs.rollback == 'false'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.version }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push release image
+        working-directory: ./python-backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          # Build production image
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION \
+            --build-arg ENVIRONMENT=production .
+
+          # Tag as latest
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          # Push images
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$VERSION
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy to inactive service
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          TARGET_SERVICE: ${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.green || needs.prepare-release.outputs.blue }}
+        run: |
+          echo "Deploying version $VERSION to inactive service: $TARGET_SERVICE"
+
+          # Get current task definition from active service
+          ACTIVE_SERVICE=${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.blue || needs.prepare-release.outputs.green }}
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $ACTIVE_SERVICE --query 'taskDefinition')
+
+          # Update image URI for new version
+          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$VERSION" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+
+          # Register new task definition for target service
+          NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          # Update target service with new task definition and scale up
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service $TARGET_SERVICE \
+            --task-definition $NEW_TASK_DEF_ARN \
+            --desired-count 1
+
+          # Wait for service to be stable
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services $TARGET_SERVICE
+
+          echo "Deployment to $TARGET_SERVICE completed successfully"
+
+  # Run validation tests on inactive environment
+  validate-inactive:
+    name: Validate Inactive Environment
+    runs-on: ubuntu-latest
+    needs: [prepare-release, deploy-inactive]
+    if: needs.prepare-release.outputs.rollback == 'false'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get inactive service endpoint
+        id: endpoint
+        env:
+          TARGET_SERVICE: ${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.green || needs.prepare-release.outputs.blue }}
+        run: |
+          # Get load balancer for inactive service
+          TARGET_GROUP_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $TARGET_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+          LOAD_BALANCER_ARN=$(aws elbv2 describe-target-groups --target-group-arns $TARGET_GROUP_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+          LOAD_BALANCER_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $LOAD_BALANCER_ARN --query 'LoadBalancers[0].DNSName' --output text)
+
+          echo "endpoint=http://$LOAD_BALANCER_DNS" >> $GITHUB_OUTPUT
+
+      - name: Run comprehensive validation
+        env:
+          INACTIVE_ENDPOINT: ${{ steps.endpoint.outputs.endpoint }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          echo "Validating inactive environment at: $INACTIVE_ENDPOINT"
+
+          # Health check
+          echo "Testing health endpoint..."
+          for i in {1..30}; do
+            if curl -f "$INACTIVE_ENDPOINT/health"; then
+              echo "✅ Health check passed"
+              break
+            fi
+            echo "Waiting for service to be ready... ($i/30)"
+            sleep 10
+          done
+
+          # API validation
+          echo "Testing API endpoints..."
+          curl -f "$INACTIVE_ENDPOINT/api/config" || exit 1
+          echo "✅ API config endpoint passed"
+
+          # Version validation
+          echo "Validating version..."
+          DEPLOYED_VERSION=$(curl -s "$INACTIVE_ENDPOINT/api/config" | jq -r '.version')
+          if [[ "$DEPLOYED_VERSION" == "$VERSION" ]]; then
+            echo "✅ Version validation passed: $DEPLOYED_VERSION"
+          else
+            echo "❌ Version mismatch: expected $VERSION, got $DEPLOYED_VERSION"
+            exit 1
+          fi
+
+          # Performance validation
+          echo "Running performance tests..."
+          for i in {1..5}; do
+            start_time=$(date +%s%N)
+            curl -s "$INACTIVE_ENDPOINT/health" > /dev/null
+            end_time=$(date +%s%N)
+            duration=$(( (end_time - start_time) / 1000000 ))
+            echo "Response time $i: ${duration}ms"
+            
+            if [ $duration -gt 3000 ]; then
+              echo "❌ Performance test failed: ${duration}ms > 3000ms"
+              exit 1
+            fi
+          done
+          echo "✅ Performance tests passed"
+
+          echo "🎉 All validation tests passed!"
+
+  # Switch traffic to new version
+  switch-traffic:
+    name: Switch Traffic
+    runs-on: ubuntu-latest
+    needs: [prepare-release, deploy-inactive, validate-inactive]
+    if: needs.prepare-release.outputs.rollback == 'false'
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Switch load balancer traffic
+        env:
+          CURRENT_SERVICE: ${{ needs.prepare-release.outputs.current }}
+          TARGET_SERVICE: ${{ needs.prepare-release.outputs.current == 'blue' && 'green' || 'blue' }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          echo "Switching traffic from $CURRENT_SERVICE to $TARGET_SERVICE"
+
+          # Get load balancer and target groups
+          CURRENT_SERVICE_NAME=${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.blue || needs.prepare-release.outputs.green }}
+          TARGET_SERVICE_NAME=${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.green || needs.prepare-release.outputs.blue }}
+
+          # Get target group ARNs
+          CURRENT_TG_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $CURRENT_SERVICE_NAME --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+          TARGET_TG_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $TARGET_SERVICE_NAME --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+
+          # Get load balancer listener
+          LOAD_BALANCER_ARN=$(aws elbv2 describe-target-groups --target-group-arns $CURRENT_TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $LOAD_BALANCER_ARN --query 'Listeners[0].ListenerArn' --output text)
+
+          # Switch traffic gradually (blue-green with canary)
+          echo "Starting canary deployment (10% traffic to new version)..."
+
+          # Create weighted target groups (90% old, 10% new)
+          aws elbv2 modify-listener --listener-arn $LISTENER_ARN --default-actions Type=forward,ForwardConfig='{
+            "TargetGroups": [
+              {"TargetGroupArn": "'$CURRENT_TG_ARN'", "Weight": 90},
+              {"TargetGroupArn": "'$TARGET_TG_ARN'", "Weight": 10}
+            ]
+          }'
+
+          echo "Canary deployment active (10% traffic). Monitoring for 5 minutes..."
+          sleep 300
+
+          # Check for errors during canary
+          ERROR_COUNT=$(aws logs filter-log-events \
+            --log-group-name "/aws/ecs/noah-backend" \
+            --start-time $(date -d '5 minutes ago' +%s)000 \
+            --filter-pattern "ERROR" \
+            --query 'length(events)' --output text)
+
+          if [[ "$ERROR_COUNT" -gt 10 ]]; then
+            echo "❌ High error rate detected during canary ($ERROR_COUNT errors). Rolling back..."
+            
+            # Rollback to 100% old version
+            aws elbv2 modify-listener --listener-arn $LISTENER_ARN --default-actions Type=forward,TargetGroupArn=$CURRENT_TG_ARN
+            exit 1
+          fi
+
+          echo "✅ Canary deployment successful. Switching to 100% new version..."
+
+          # Switch to 100% new version
+          aws elbv2 modify-listener --listener-arn $LISTENER_ARN --default-actions Type=forward,TargetGroupArn=$TARGET_TG_ARN
+
+          echo "🎉 Traffic switch completed successfully!"
+
+  # Scale down old version
+  cleanup-old-version:
+    name: Cleanup Old Version
+    runs-on: ubuntu-latest
+    needs: [prepare-release, switch-traffic]
+    if: needs.prepare-release.outputs.rollback == 'false'
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Scale down old version
+        env:
+          OLD_SERVICE: ${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.blue || needs.prepare-release.outputs.green }}
+        run: |
+          echo "Scaling down old service: $OLD_SERVICE"
+
+          # Wait 10 minutes before scaling down (allow for any issues to surface)
+          echo "Waiting 10 minutes before scaling down old version..."
+          sleep 600
+
+          # Scale down old service to 0
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service $OLD_SERVICE \
+            --desired-count 0
+
+          echo "Old version scaled down successfully"
+
+  # Rollback deployment
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    if: needs.prepare-release.outputs.rollback == 'true'
+    environment: production
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Perform rollback
+        env:
+          CURRENT_SERVICE: ${{ needs.prepare-release.outputs.current }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          echo "Performing rollback to version: $VERSION"
+
+          # Get service names
+          CURRENT_SERVICE_NAME=${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.blue || needs.prepare-release.outputs.green }}
+          ROLLBACK_SERVICE_NAME=${{ needs.prepare-release.outputs.current == 'blue' && needs.prepare-release.outputs.green || needs.prepare-release.outputs.blue }}
+
+          # Get target group ARNs
+          CURRENT_TG_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $CURRENT_SERVICE_NAME --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+          ROLLBACK_TG_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services $ROLLBACK_SERVICE_NAME --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
+
+          # Get load balancer listener
+          LOAD_BALANCER_ARN=$(aws elbv2 describe-target-groups --target-group-arns $CURRENT_TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
+          LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn $LOAD_BALANCER_ARN --query 'Listeners[0].ListenerArn' --output text)
+
+          # Scale up rollback service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service $ROLLBACK_SERVICE_NAME \
+            --desired-count 1
+
+          # Wait for rollback service to be ready
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services $ROLLBACK_SERVICE_NAME
+
+          # Switch traffic to rollback version
+          aws elbv2 modify-listener --listener-arn $LISTENER_ARN --default-actions Type=forward,TargetGroupArn=$ROLLBACK_TG_ARN
+
+          # Scale down current service
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service $CURRENT_SERVICE_NAME \
+            --desired-count 0
+
+          echo "🔄 Rollback completed successfully"
+
+  # Post-deployment notification
+  notify-completion:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: [prepare-release, cleanup-old-version, rollback]
+    if: always()
+
+    steps:
+      - name: Determine deployment result
+        id: result
+        run: |
+          if [[ "${{ needs.prepare-release.outputs.rollback }}" == "true" ]]; then
+            if [[ "${{ needs.rollback.result }}" == "success" ]]; then
+              echo "status=rollback_success" >> $GITHUB_OUTPUT
+              echo "message=Rollback completed successfully" >> $GITHUB_OUTPUT
+            else
+              echo "status=rollback_failed" >> $GITHUB_OUTPUT
+              echo "message=Rollback failed" >> $GITHUB_OUTPUT
+            fi
+          else
+            if [[ "${{ needs.cleanup-old-version.result }}" == "success" ]]; then
+              echo "status=deployment_success" >> $GITHUB_OUTPUT
+              echo "message=Blue-green deployment completed successfully" >> $GITHUB_OUTPUT
+            else
+              echo "status=deployment_failed" >> $GITHUB_OUTPUT
+              echo "message=Blue-green deployment failed" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Send notification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.result.outputs.status }}';
+            const message = '${{ steps.result.outputs.message }}';
+            const version = '${{ needs.prepare-release.outputs.version }}';
+
+            const emoji = status.includes('success') ? '🎉' : '❌';
+            const title = status.includes('rollback') ? 'Rollback' : 'Blue-Green Deployment';
+
+            const body = `## ${emoji} ${title} ${status.includes('success') ? 'Completed' : 'Failed'}
+
+            **Version:** ${version}
+            **Status:** ${message}
+            **Commit:** ${{ github.sha }}
+            **Environment:** Production
+
+            ${status.includes('success') ? 'The deployment has been completed successfully!' : 'Please check the logs for more details.'}
+            `;
+
+            // Create a release comment or issue
+            if (context.eventName === 'release') {
+              github.rest.repos.createReleaseComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: context.payload.release.id,
+                body: body
+              });
+            }
