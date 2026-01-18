@@ -145,11 +145,24 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const status = '${{ steps.prod-health.outputs.status }}';
+            const endpoint = '${{ steps.prod-health.outputs.endpoint }}';
+
+            if (status === 'not_deployed') {
+              console.log('Infrastructure not deployed yet, skipping alert');
+              return;
+            }
+
+            if (status === 'not_ready') {
+              console.log('Service not ready yet, skipping alert');
+              return;
+            }
+
             const title = `🚨 Production Health Check Failed`;
             const body = `## Production Health Alert
 
-            **Status:** ❌ Unhealthy
-            **Endpoint:** ${{ steps.prod-health.outputs.endpoint }}
+            **Status:** ❌ ${status}
+            **Endpoint:** ${endpoint || 'Not available'}
             **Timestamp:** ${new Date().toISOString()}
             **Check Type:** Automated monitoring
 
@@ -278,6 +291,10 @@ jobs:
 
       - name: Create performance alert if needed
         if: env.cpu_alert == 'true' || env.memory_alert == 'true' || env.error_rate_alert == 'true'
+        env:
+          cpu_alert: ${{ env.cpu_alert }}
+          memory_alert: ${{ env.memory_alert }}
+          error_rate_alert: ${{ env.error_rate_alert }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -383,6 +400,9 @@ jobs:
 
       - name: Create database alert if needed
         if: env.db_cpu_alert == 'true' || env.db_connections_alert == 'true'
+        env:
+          db_cpu_alert: ${{ env.db_cpu_alert }}
+          db_connections_alert: ${{ env.db_connections_alert }}
         uses: actions/github-script@v7
         with:
           script: |
