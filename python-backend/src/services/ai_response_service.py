@@ -5,7 +5,6 @@ import json
 from typing import Dict, List, Optional, Any, AsyncGenerator
 from datetime import datetime
 import openai
-import anthropic
 import asyncio
 
 from src.config import settings
@@ -17,9 +16,8 @@ class AIResponseService:
     """Service for generating dynamic AI responses using OpenAI/Anthropic APIs."""
 
     def __init__(self):
-        """Initialize AI response service with available providers."""
+        """Initialize AI response service with OpenAI."""
         self.openai_client = None
-        self.anthropic_client = None
         
         # Initialize OpenAI client if API key is available
         if settings.openai_api_key:
@@ -29,24 +27,14 @@ class AIResponseService:
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenAI client: {e}")
         
-        # Initialize Anthropic client if API key is available
-        if settings.anthropic_api_key:
-            try:
-                self.anthropic_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-                logger.info("Anthropic client initialized successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Anthropic client: {e}")
-        
-        # Determine preferred provider
-        self.preferred_provider = self._determine_preferred_provider()
-        logger.info(f"AI Response Service initialized with provider: {self.preferred_provider}")
+        # Determine if we have AI available
+        self.has_ai = self.openai_client is not None
+        logger.info(f"AI Response Service initialized with OpenAI: {self.has_ai}")
 
     def _determine_preferred_provider(self) -> str:
         """Determine which AI provider to use based on availability."""
         if self.openai_client:
             return "openai"
-        elif self.anthropic_client:
-            return "anthropic"
         else:
             return "fallback"
 
@@ -75,10 +63,8 @@ class AIResponseService:
             )
             
             # Generate response using preferred provider
-            if self.preferred_provider == "openai":
+            if self.has_ai and self.openai_client:
                 return await self._generate_openai_response(system_prompt, user_prompt)
-            elif self.preferred_provider == "anthropic":
-                return await self._generate_anthropic_response(system_prompt, user_prompt)
             else:
                 return self._generate_fallback_response(user_message, intent)
                 
@@ -111,11 +97,8 @@ class AIResponseService:
             )
             
             # Generate streaming response using preferred provider
-            if self.preferred_provider == "openai":
+            if self.has_ai and self.openai_client:
                 async for chunk in self._generate_openai_streaming_response(system_prompt, user_prompt):
-                    yield chunk
-            elif self.preferred_provider == "anthropic":
-                async for chunk in self._generate_anthropic_streaming_response(system_prompt, user_prompt):
                     yield chunk
             else:
                 # Fallback to non-streaming response
@@ -297,44 +280,6 @@ Remember: You're not just providing information - you're being a supportive read
             logger.error(f"Error generating OpenAI streaming response: {e}")
             raise
 
-    async def _generate_anthropic_response(self, system_prompt: str, user_prompt: str) -> str:
-        """Generate response using Anthropic API."""
-        try:
-            response = await self.anthropic_client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=500,
-                temperature=0.7,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_prompt}
-                ]
-            )
-            
-            return response.content[0].text.strip()
-            
-        except Exception as e:
-            logger.error(f"Error generating Anthropic response: {e}")
-            raise
-
-    async def _generate_anthropic_streaming_response(self, system_prompt: str, user_prompt: str) -> AsyncGenerator[str, None]:
-        """Generate streaming response using Anthropic API."""
-        try:
-            async with self.anthropic_client.messages.stream(
-                model="claude-3-haiku-20240307",
-                max_tokens=500,
-                temperature=0.7,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_prompt}
-                ]
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield text
-                    
-        except Exception as e:
-            logger.error(f"Error generating Anthropic streaming response: {e}")
-            raise
-
     def _generate_fallback_response(self, user_message: str, intent: Dict[str, Any]) -> str:
         """Generate fallback response when AI services are unavailable."""
         intent_type = intent.get("intent", "general_conversation")
@@ -426,9 +371,8 @@ Return as JSON with keys: template1, template2, template3"""
         """Get information about the AI response service configuration."""
         return {
             "service_name": "AI Response Service",
-            "preferred_provider": self.preferred_provider,
+            "provider": "openai" if self.has_ai else "fallback",
             "openai_available": self.openai_client is not None,
-            "anthropic_available": self.anthropic_client is not None,
             "capabilities": [
                 "dynamic_response_generation",
                 "streaming_responses",
@@ -437,8 +381,5 @@ Return as JSON with keys: template1, template2, template3"""
                 "conversation_memory",
                 "template_generation"
             ],
-            "models": {
-                "openai": "gpt-4o-mini",
-                "anthropic": "claude-3-haiku-20240307"
-            }
+            "model": "gpt-4o-mini" if self.has_ai else "fallback"
         }

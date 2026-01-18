@@ -2,10 +2,13 @@
 
 import boto3
 import httpx
+import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AgentCoreService:
@@ -20,10 +23,28 @@ class AgentCoreService:
             aws_secret_access_key=settings.aws_secret_access_key,
             region_name=settings.aws_region
         )
+        
+        # Initialize enhanced intent service
+        try:
+            from src.services.enhanced_intent_service import EnhancedIntentService
+            self.enhanced_intent_service = EnhancedIntentService()
+        except Exception as e:
+            logger.warning(f"Failed to initialize enhanced intent service: {e}")
+            self.enhanced_intent_service = None
 
     async def analyze_intent(self, message: str, context: Optional[Dict] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
-        """Analyze user message intent using AWS Agent Core."""
+        """Analyze user message intent using enhanced AI or AWS Agent Core."""
         try:
+            # Try enhanced intent service first
+            if self.enhanced_intent_service:
+                conversation_history = context.get("conversation_history") if context else None
+                return await self.enhanced_intent_service.analyze_intent(
+                    message=message,
+                    context=context,
+                    conversation_history=conversation_history
+                )
+            
+            # Fallback to AWS Agent Core
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.endpoint}/analyze-intent",
@@ -41,12 +62,20 @@ class AgentCoreService:
                 response.raise_for_status()
                 return response.json()
         except Exception as e:
-            # Fallback to basic intent analysis
+            # Final fallback to basic intent analysis
             return self._fallback_intent_analysis(message, metadata)
 
-    async def extract_entities(self, message: str) -> Dict[str, List[str]]:
-        """Extract entities from user message."""
+    async def extract_entities(self, message: str, intent_context: Optional[Dict] = None) -> Dict[str, List[str]]:
+        """Extract entities from user message using enhanced AI or AWS Agent Core."""
         try:
+            # Try enhanced intent service first
+            if self.enhanced_intent_service:
+                return await self.enhanced_intent_service.extract_entities(
+                    message=message,
+                    intent_context=intent_context
+                )
+            
+            # Fallback to AWS Agent Core
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.endpoint}/extract-entities",
@@ -56,13 +85,13 @@ class AgentCoreService:
                     },
                     json={
                         "message": message,
-                        "entity_types": ["book_title", "author", "genre", "language"]
+                        "entity_types": ["book_title", "author", "genre", "language", "reading_preferences", "feedback_indicators"]
                     }
                 )
                 response.raise_for_status()
                 return response.json()
         except Exception as e:
-            # Fallback to basic entity extraction
+            # Final fallback to basic entity extraction
             return self._fallback_entity_extraction(message)
 
     async def generate_response(

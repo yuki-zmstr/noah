@@ -99,7 +99,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 
 ## Phase 3: Enhanced AI Capabilities
 
-- [-] 5. Replace hardcoded responses with dynamic AI generation
+- [x] 5. Replace hardcoded responses with dynamic AI generation
   - [x] 5.1 Implement proper AI response generation
     - Replace fallback responses with OpenAI/Anthropic API integration
     - Create dynamic response templates based on user context and intent
@@ -107,7 +107,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Add personality and tone consistency for Noah character
     - _Requirements: 10.3, 10.5, 10.6_
 
-  - [-] 5.2 Enhance intent recognition and entity extraction
+  - [x] 5.2 Enhance intent recognition and entity extraction
     - Improve intent classification beyond basic keyword matching
     - Add sophisticated entity extraction for books, authors, genres
     - Implement context-aware conversation flow management

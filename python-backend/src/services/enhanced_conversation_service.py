@@ -195,13 +195,20 @@ class EnhancedConversationService:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Process message using AWS Agent Core with streaming (fallback)."""
         try:
-            # Analyze user intent and extract entities
+            # Get conversation history for enhanced context
+            conversation_history = await self._get_recent_conversation_history(session.session_id, db)
+            
+            # Enhanced context with conversation history
+            enhanced_context = session.context.copy() if session.context else {}
+            enhanced_context["conversation_history"] = conversation_history
+            
+            # Analyze user intent and extract entities with enhanced context
             intent = await self.agent_core.analyze_intent(
                 user_message,
-                session.context,
+                enhanced_context,
                 metadata
             )
-            entities = await self.agent_core.extract_entities(user_message)
+            entities = await self.agent_core.extract_entities(user_message, intent)
 
             # Generate and stream Noah's response
             async for chunk in self._generate_and_stream_noah_response_agent_core(
@@ -983,17 +990,25 @@ class EnhancedConversationService:
         """Get information about the conversation service configuration."""
         ai_service_info = self.ai_response_service.get_service_info()
         
+        # Get enhanced intent service info if available
+        enhanced_intent_info = None
+        if hasattr(self.agent_core, 'enhanced_intent_service') and self.agent_core.enhanced_intent_service:
+            enhanced_intent_info = self.agent_core.enhanced_intent_service.get_service_info()
+        
         return {
-            "service_type": "Strands Agents" if self.use_strands else "AI Response Service with Agent Core",
+            "service_type": "Strands Agents" if self.use_strands else "AI Response Service with Enhanced Agent Core",
             "strands_enabled": settings.strands_enabled,
             "strands_available": self.strands_service is not None,
             "ai_response_service": ai_service_info,
+            "enhanced_intent_service": enhanced_intent_info,
             "agent_info": self.strands_service.get_agent_info() if self.strands_service else None,
             "capabilities": [
                 "http_streaming_responses",
                 "conversation_context",
-                "intent_analysis",
-                "entity_extraction",
+                "enhanced_intent_analysis",
+                "sophisticated_entity_extraction",
+                "conversation_flow_analysis",
+                "multi_turn_conversation_support",
                 "dynamic_ai_responses",
                 "personality_consistency",
                 "conversation_memory",
