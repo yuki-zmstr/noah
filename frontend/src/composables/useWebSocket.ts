@@ -74,6 +74,8 @@ export function useWebSocket() {
     noah_message_complete: [] as Array<(data: { message_id: string, timestamp: string }) => void>,
     typing: [] as Array<(typing: TypingIndicator) => void>,
     conversation_history: [] as Array<(data: { messages: ChatMessage[] }) => void>,
+    preference_update: [] as Array<(data: { user_id: string, updated_preferences: any, timestamp: string }) => void>,
+    recommendation_refresh: [] as Array<(data: { user_id: string, new_recommendations: any[], timestamp: string }) => void>,
   }
 
   const handleMessage = (data: any) => {
@@ -132,6 +134,29 @@ export function useWebSocket() {
     messageHandlers.conversation_history.push(callback)
   }
 
+  const onPreferenceUpdate = (callback: (data: { user_id: string, updated_preferences: any, timestamp: string }) => void) => {
+    messageHandlers.preference_update.push(callback)
+  }
+
+  const onRecommendationRefresh = (callback: (data: { user_id: string, new_recommendations: any[], timestamp: string }) => void) => {
+    messageHandlers.recommendation_refresh.push(callback)
+  }
+
+  const sendPreferenceUpdate = (userId: string, preferenceData: any) => {
+    if (socket.value && isConnected.value) {
+      const payload = {
+        type: 'preference_update',
+        userId,
+        preferenceData,
+        timestamp: new Date().toISOString()
+      }
+      console.log('Sending preference update:', payload)
+      socket.value.send(JSON.stringify(payload))
+    } else {
+      console.error('Cannot send preference update: WebSocket not connected')
+    }
+  }
+
   const joinSession = (sessionId: string, userId: string) => {
     if (socket.value && isConnected.value) {
       const payload = {
@@ -169,6 +194,9 @@ export function useWebSocket() {
     onMessageComplete,
     onTyping,
     onConversationHistory,
+    onPreferenceUpdate,
+    onRecommendationRefresh,
+    sendPreferenceUpdate,
     joinSession
   }
 }

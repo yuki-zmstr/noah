@@ -1,25 +1,4 @@
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - cd frontend
-        - npm ci --cache .npm --prefer-offline
-    build:
-      commands:
-        - npm run build
-  artifacts:
-    baseDirectory: frontend/dist
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - frontend/.npm/**/*
-backend:
-  phases:
-    build:
-      commands:
-        - echo "Backend build phase - no actions needed"
 environment:
   variables:
     VITE_AWS_REGION: ap-northeast-1
@@ -34,3 +13,22 @@ environment:
     VITE_DEFAULT_LANGUAGE: english
     VITE_MAX_MESSAGE_LENGTH: 2000
     VITE_TYPING_INDICATOR_DELAY: 1000
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd frontend
+        - echo "Environment variables:"
+        - env | grep VITE_
+        - npm ci --cache .npm --prefer-offline
+    build:
+      commands:
+        - echo "Building with API endpoint:" $VITE_API_ENDPOINT
+        - npm run build
+  artifacts:
+    baseDirectory: frontend/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - frontend/.npm/**/*

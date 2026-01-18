@@ -227,15 +227,35 @@ export class NoahInfrastructureStack extends cdk.Stack {
       unhealthyThresholdCount: 5,
     })
 
+    // Create key pair for bastion host
+    const bastionKeyPair = new ec2.KeyPair(this, 'NoahBastionKeyPair', {
+      keyPairName: 'noah-bastion-key',
+      type: ec2.KeyPairType.RSA,
+      format: ec2.KeyPairFormat.PEM,
+    })
+
+    // IAM role for bastion host with SSM permissions
+    const bastionRole = new iam.Role(this, 'NoahBastionRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
+      ],
+    })
+
     // Bastion Host for database access
     const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
       vpc,
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
       machineImage: ec2.MachineImage.latestAmazonLinux2(),
+      keyPair: bastionKeyPair,
+      role: bastionRole,
       subnetSelection: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
     })
+
+    // Allow SSH access to bastion host from anywhere (you can restrict this to your IP)
+    bastionHost.allowSshAccessFrom(ec2.Peer.anyIpv4())
 
     // Allow bastion host to access database
     database.connections.allowFrom(bastionHost, ec2.Port.tcp(5432))
@@ -454,6 +474,11 @@ export class NoahInfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ContentBucketName', {
       value: contentBucket.bucketName,
       description: 'S3 bucket for content storage',
+    })
+
+    new cdk.CfnOutput(this, 'BastionHostKeyPairName', {
+      value: bastionKeyPair.keyPairName,
+      description: 'Bastion Host Key Pair Name',
     })
 
     new cdk.CfnOutput(this, 'BastionHostPublicIP', {
