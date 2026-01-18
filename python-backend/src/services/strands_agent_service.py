@@ -263,6 +263,42 @@ Use these tools when appropriate to provide the best possible reading assistance
                 "error": str(e)
             }
 
+    def _convert_event(self, event) -> dict | None:
+        """Convert Strands events to frontend-compatible JSON format."""
+        try:
+            if not hasattr(event, 'get'):
+                return None
+            
+            inner_event = event.get('event')
+            if not inner_event:
+                return None
+            
+            # Detect text deltas
+            content_block_delta = inner_event.get('contentBlockDelta')
+            if content_block_delta:
+                delta = content_block_delta.get('delta', {})
+                text = delta.get('text')
+                if text:
+                    return {'type': 'text', 'data': text}
+            
+            # Detect tool use start
+            content_block_start = inner_event.get('contentBlockStart')
+            if content_block_start:
+                start = content_block_start.get('start', {})
+                tool_use = start.get('toolUse')
+                if tool_use:
+                    tool_name = tool_use.get('name', 'unknown')
+                    return {'type': 'tool_use', 'tool_name': tool_name}
+            
+            # Detect message completion
+            message_stop = inner_event.get('messageStop')
+            if message_stop:
+                return {'type': 'complete'}
+            
+            return None
+        except Exception:
+            return None
+
     async def stream_conversation(
         self,
         user_message: str,
@@ -282,13 +318,29 @@ Use these tools when appropriate to provide the best possible reading assistance
             
             # Stream response from Noah agent
             async for chunk in self.noah_agent.stream_async(context_message):
-                yield {
-                    "type": "content_chunk",
-                    "content": chunk.content if hasattr(chunk, 'content') else str(chunk),
-                    "is_final": getattr(chunk, 'is_final', False),
-                    "tool_calls": getattr(chunk, 'tool_calls', []),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
+                # Convert the raw Strands event to a clean format
+                converted_event = self._convert_event(chunk)
+                
+                if converted_event:
+                    if converted_event['type'] == 'text':
+                        yield {
+                            "type": "content_chunk",
+                            "content": converted_event['data'],
+                            "is_final": False,
+                            "tool_calls": [],
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    elif converted_event['type'] == 'tool_use':
+                        # Log tool usage but don't yield it as content
+                        logger.info(f"Tool being used: {converted_event['tool_name']}")
+                    elif converted_event['type'] == 'complete':
+                        yield {
+                            "type": "content_chunk",
+                            "content": "",
+                            "is_final": True,
+                            "tool_calls": [],
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
                 
         except Exception as e:
             logger.error(f"Error streaming conversation with Strands agent: {e}")
