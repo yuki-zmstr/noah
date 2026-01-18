@@ -20,9 +20,8 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   ECR_REPOSITORY: noah-backend
-  ECS_SERVICE: NoahInfrastructureStack-NoahBackendService
-  ECS_CLUSTER: NoahInfrastructureStack-NoahCluster
-  AMPLIFY_APP_ID: d1234567890123 # Replace with actual Amplify App ID
+  STACK_NAME: NoahInfrastructureStack
+  AMPLIFY_APP_ID: d7603dy3bkh3g
 
 jobs:
   # Determine deployment environment
@@ -156,10 +155,29 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
+      - name: Get ECS resources from CloudFormation
+        id: ecs-resources
+        run: |
+          # Get cluster name from CloudFormation stack
+          ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
+            --output text)
+          echo "cluster=$ECS_CLUSTER" >> $GITHUB_OUTPUT
+          echo "Found ECS cluster: $ECS_CLUSTER"
+
+          # Get service name from CloudFormation stack
+          ECS_SERVICE=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Service`].PhysicalResourceId' \
+            --output text)
+          echo "service=$ECS_SERVICE" >> $GITHUB_OUTPUT
+          echo "Found ECS service: $ECS_SERVICE"
+
       - name: Update ECS service
         run: |
           # Get current task definition
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ env.ECS_SERVICE }} --query 'taskDefinition')
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ steps.ecs-resources.outputs.service }} --query 'taskDefinition')
 
           # Update image URI in task definition
           NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
@@ -168,15 +186,15 @@ jobs:
           NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
 
           # Update service
-          aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $NEW_TASK_DEF_ARN
+          aws ecs update-service --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --task-definition $NEW_TASK_DEF_ARN
 
           # Wait for deployment to complete
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }}
+          aws ecs wait services-stable --cluster ${{ steps.ecs-resources.outputs.cluster }} --services ${{ steps.ecs-resources.outputs.service }}
 
       - name: Verify deployment
         run: |
-          # Get service endpoint
-          LOAD_BALANCER_DNS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
+          # Get service endpoint using the discovered resources
+          LOAD_BALANCER_DNS=$(aws ecs describe-services --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
 
           # Test health endpoint
           for i in {1..30}; do
