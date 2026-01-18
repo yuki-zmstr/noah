@@ -3,6 +3,7 @@
 # Test Database Connection
 # This script tests the database connection using the same logic as the deployment
 # Updated: Migration test completed successfully
+# Updated: ECS service update fix applied
 
 set -e
 

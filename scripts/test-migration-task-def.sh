@@ -53,14 +53,17 @@ echo "📝 Creating migration task definition..."
 echo "$TASK_DEFINITION" > /tmp/original-task-def.json
 
 # Create the migration task definition using jq
-jq --arg IMAGE "$MIGRATION_IMAGE" '
-  .family = "noah-migrations-test" |
-  .containerDefinitions[0].image = $IMAGE |
-  .containerDefinitions[0].name = "migration-container" |
-  .containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
-  .containerDefinitions[0].logConfiguration.options."awslogs-group" = "/ecs/noah-migrations" |
-  del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
-' /tmp/original-task-def.json > /tmp/migration-task-def.json
+cat > /tmp/migration-jq-script.jq << 'EOF'
+def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
+
+.family = "noah-migrations-test" |
+.containerDefinitions[0].image = $IMAGE |
+.containerDefinitions[0].name = "migration-container" |
+.containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
+remove_fields
+EOF
+
+jq --arg IMAGE "$MIGRATION_IMAGE" -f /tmp/migration-jq-script.jq /tmp/original-task-def.json > /tmp/migration-task-def.json
 
 # Verify the JSON is valid
 if ! jq empty /tmp/migration-task-def.json; then

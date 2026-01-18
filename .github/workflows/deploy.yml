@@ -269,13 +269,17 @@ jobs:
           echo "$TASK_DEFINITION" > /tmp/original-task-def.json
 
           # Create the migration task definition using jq
-          jq --arg IMAGE "$MIGRATION_IMAGE" '
-            .family = "noah-migrations" |
-            .containerDefinitions[0].image = $IMAGE |
-            .containerDefinitions[0].name = "migration-container" |
-            .containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
-            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
-          ' /tmp/original-task-def.json > /tmp/migration-task-def.json
+          cat > /tmp/migration-jq-script.jq << 'EOF'
+def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
+
+.family = "noah-migrations" |
+.containerDefinitions[0].image = $IMAGE |
+.containerDefinitions[0].name = "migration-container" |
+.containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
+remove_fields
+EOF
+
+          jq --arg IMAGE "$MIGRATION_IMAGE" -f /tmp/migration-jq-script.jq /tmp/original-task-def.json > /tmp/migration-task-def.json
 
           # Verify the JSON is valid
           if ! jq empty /tmp/migration-task-def.json; then
@@ -292,6 +296,9 @@ jobs:
           # Show a preview of the migration task definition for debugging
           echo "📋 Migration task definition preview:"
           jq '.family, .containerDefinitions[0].name, .containerDefinitions[0].image, .containerDefinitions[0].command' /tmp/migration-task-def.json
+
+          # Show file size for debugging
+          echo "📏 Task definition file size: $(wc -c < /tmp/migration-task-def.json) bytes"
 
           # Register the migration task definition
           echo "📝 Registering migration task definition..."
@@ -373,10 +380,16 @@ jobs:
               echo "No log streams found or could not determine recent stream"
             fi
             
+            # Clean up temporary files
+            rm -f /tmp/original-task-def.json /tmp/migration-task-def.json /tmp/migration-jq-script.jq
+            
             exit 1
           fi
 
           echo "✅ Database migrations completed successfully!"
+
+          # Clean up temporary files
+          rm -f /tmp/original-task-def.json /tmp/migration-task-def.json /tmp/migration-jq-script.jq
 
       - name: Get ECS resources from CloudFormation
         id: ecs-resources
@@ -413,11 +426,34 @@ jobs:
             --task-definition $CURRENT_TASK_DEF_ARN \
             --query 'taskDefinition')
 
+          # Save the task definition to a file
+          echo "$TASK_DEFINITION" > /tmp/current-task-def.json
+
+          # Create jq script for updating the task definition
+          cat > /tmp/update-jq-script.jq << 'EOF'
+def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
+
+.containerDefinitions[0].image = $IMAGE |
+remove_fields
+EOF
+
           # Update image URI in task definition
-          NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+          jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" -f /tmp/update-jq-script.jq /tmp/current-task-def.json > /tmp/new-task-def.json
+
+          # Verify the JSON is valid
+          if ! jq empty /tmp/new-task-def.json; then
+            echo "❌ Generated task definition JSON is invalid"
+            echo "Current task definition:"
+            cat /tmp/current-task-def.json
+            echo "New task definition:"
+            cat /tmp/new-task-def.json
+            exit 1
+          fi
+
+          echo "✅ Task definition updated successfully"
 
           # Register new task definition
-          NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file:///tmp/new-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
 
           echo "New task definition: $NEW_TASK_DEF_ARN"
 
@@ -431,6 +467,9 @@ jobs:
           aws ecs wait services-stable --cluster ${{ steps.ecs-resources.outputs.cluster }} --services ${{ steps.ecs-resources.outputs.service }}
 
           echo "✅ ECS service deployment completed!"
+
+          # Clean up temporary files
+          rm -f /tmp/current-task-def.json /tmp/new-task-def.json /tmp/update-jq-script.jq
 
       - name: Verify deployment
         run: |
