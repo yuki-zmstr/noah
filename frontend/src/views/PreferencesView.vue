@@ -434,6 +434,7 @@ import { ref, computed, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 import { useLanguageStore } from "@/stores/language";
 import { usePreferencesStore } from "@/stores/preferences";
+import { useAuthStore } from "@/stores/auth";
 import { useToast } from "@/services/toastService";
 import LanguageToggle from "@/components/LanguageToggle.vue";
 import PreferenceItem from "@/components/PreferenceItem.vue";
@@ -444,13 +445,11 @@ import type { PreferenceUpdateImpact } from "@/services/preferenceUpdateService"
 
 const languageStore = useLanguageStore();
 const preferencesStore = usePreferencesStore();
+const authStore = useAuthStore();
 const toast = useToast();
 
 // Local state
 const activeTopicFilter = ref<"all" | "strong" | "moderate">("all");
-
-// Mock user ID - in a real app, this would come from authentication
-const userId = "user_123";
 
 // Computed properties
 const filteredTopicPreferences = computed(() => {
@@ -485,16 +484,25 @@ const formatContextualPreference = (context: ContextualPreference): string => {
 };
 
 const refreshData = async () => {
-  await preferencesStore.refreshData(userId);
+  if (!authStore.isAuthenticated) {
+    console.warn("User not authenticated, cannot load preferences");
+    return;
+  }
+  await preferencesStore.refreshData(authStore.userId);
 };
 
 const handleTopicUpdate = async (data: { name: string; weight: number }) => {
+  if (!authStore.isAuthenticated) return;
+
   try {
-    const impacts = await preferencesStore.overridePreference(userId, {
-      type: "topic",
-      key: data.name,
-      value: data.weight,
-    });
+    const impacts = await preferencesStore.overridePreference(
+      authStore.userId,
+      {
+        type: "topic",
+        key: data.name,
+        value: data.weight,
+      },
+    );
 
     // Show impact notification
     showImpactNotification(impacts);
@@ -507,12 +515,17 @@ const handleContentTypeUpdate = async (data: {
   name: string;
   weight: number;
 }) => {
+  if (!authStore.isAuthenticated) return;
+
   try {
-    const impacts = await preferencesStore.overridePreference(userId, {
-      type: "content_type",
-      key: data.name,
-      value: data.weight,
-    });
+    const impacts = await preferencesStore.overridePreference(
+      authStore.userId,
+      {
+        type: "content_type",
+        key: data.name,
+        value: data.weight,
+      },
+    );
 
     // Show impact notification
     showImpactNotification(impacts);
@@ -525,9 +538,11 @@ const handleReadingLevelUpdate = async (data: {
   language: "english" | "japanese";
   level: number;
 }) => {
+  if (!authStore.isAuthenticated) return;
+
   try {
     const impacts = await preferencesStore.updateReadingLevelsWithImpact(
-      userId,
+      authStore.userId,
       data.language,
       data.level,
     );
@@ -568,6 +583,16 @@ const showImpactNotification = (impacts: PreferenceUpdateImpact[]) => {
 
 // Lifecycle
 onMounted(async () => {
-  await refreshData();
+  // Initialize auth first
+  authStore.initializeAuth();
+
+  // Only load preferences if user is authenticated
+  if (authStore.isAuthenticated) {
+    await refreshData();
+  } else {
+    // Set error message if not authenticated
+    console.warn("User not authenticated, preferences cannot be loaded");
+    preferencesStore.setError("Please log in to view your preferences");
+  }
 });
 </script>
