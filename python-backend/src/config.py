@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # Strands Agents Configuration
     strands_enabled: bool = True
-    strands_agent_model: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    strands_agent_model: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
     strands_temperature: float = 0.7
     strands_max_tokens: int = 1000
     strands_streaming_enabled: bool = True

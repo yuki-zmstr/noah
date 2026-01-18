@@ -12,7 +12,7 @@ class StrandsConfig(BaseModel):
     
     # Agent configuration
     agent_name: str = Field(default="noah_reading_agent", description="Name of the main agent")
-    agent_model: str = Field(default="anthropic.claude-3-5-sonnet-20241022-v2:0", description="Model to use for the agent")
+    agent_model: str = Field(default="anthropic.claude-3-5-sonnet-20240620-v1:0", description="Model to use for the agent")
     agent_temperature: float = Field(default=0.7, description="Temperature for response generation")
     agent_max_tokens: int = Field(default=1000, description="Maximum tokens per response")
     
