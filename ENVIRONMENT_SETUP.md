@@ -218,7 +218,7 @@ RATE_LIMIT_MAX_REQUESTS=100      # Max requests per window
 In `frontend/.env`:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:8000/api
+VITE_API_BASE_URL=https://api-noah.com/api
 VITE_ENABLE_DISCOVERY_MODE=true
 VITE_ENABLE_MULTILINGUAL=true
 VITE_DEFAULT_LANGUAGE=english

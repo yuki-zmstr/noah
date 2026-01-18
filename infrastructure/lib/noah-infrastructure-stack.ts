@@ -201,6 +201,10 @@ export class NoahInfrastructureStack extends cdk.Stack {
           
           // CORS configuration
           ALLOWED_ORIGINS: 'http://localhost:5173,https://localhost:5173,https://d33z9owyqf2ey4.cloudfront.net,https://master.d7603dy3bkh3g.amplifyapp.com',
+          
+          // Proxy configuration for ALB/CloudFront
+          TRUSTED_HOSTS: '*',
+          PROXY_HEADERS_ENABLED: 'true',
         },
         secrets: {
           DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(database.secret!, 'password'),

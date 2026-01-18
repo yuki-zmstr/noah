@@ -2,6 +2,8 @@
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 import logging
 import asyncio
 import atexit
@@ -45,7 +47,12 @@ def create_app() -> FastAPI:
         """Health check endpoint for load balancer."""
         return {"status": "healthy"}
 
-    # Add monitoring middleware BEFORE CORS
+    # Add ProxyHeadersMiddleware FIRST to handle X-Forwarded-* headers from ALB
+    if settings.proxy_headers_enabled:
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_hosts)
+        logger.info(f"ProxyHeadersMiddleware enabled with trusted_hosts: {settings.trusted_hosts}")
+
+    # Add monitoring middleware AFTER proxy headers
     app.add_middleware(MonitoringMiddleware)
 
     # Add CORS middleware AFTER monitoring
@@ -222,6 +229,25 @@ def create_app() -> FastAPI:
             "docs_url": "/docs" if settings.debug else "Documentation disabled in production",
             "health_check": "/health",
             "monitoring": "/api/v1/monitoring/health"
+        }
+
+    @app.get("/api/debug/headers")
+    async def debug_headers(request: Request):
+        """Debug endpoint to check proxy headers (only available in debug mode)."""
+        if not settings.debug:
+            return {"error": "Debug endpoints disabled in production"}
+        
+        return {
+            "headers": dict(request.headers),
+            "client_host": request.client.host if request.client else None,
+            "url": str(request.url),
+            "forwarded_proto": request.headers.get("x-forwarded-proto"),
+            "forwarded_for": request.headers.get("x-forwarded-for"),
+            "forwarded_host": request.headers.get("x-forwarded-host"),
+            "forwarded_port": request.headers.get("x-forwarded-port"),
+            "real_ip": request.headers.get("x-real-ip"),
+            "cloudfront_viewer_country": request.headers.get("cloudfront-viewer-country"),
+            "user_agent": request.headers.get("user-agent"),
         }
 
     @app.get("/api/config")

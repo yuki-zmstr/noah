@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # CORS - Handle as comma-separated string, then split
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
 
+    # Proxy Configuration
+    trusted_hosts: str = "*"  # For ALB/CloudFront - restrict in production if needed
+    proxy_headers_enabled: bool = True
+
     # Monitoring Configuration
     monitoring_enabled: bool = True
     cloudwatch_enabled: bool = True

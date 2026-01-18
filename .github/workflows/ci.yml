@@ -255,7 +255,7 @@ jobs:
       - name: Run integration tests
         working-directory: ./python-backend
         env:
-          API_BASE_URL: http://localhost:8000
+          API_BASE_URL: https://api-noah.com
           DATABASE_URL: postgresql://noah_user:noah_password@localhost:5432/noah_integration
         run: uv run pytest tests/test_integration_*.py -v
 

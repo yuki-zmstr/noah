@@ -137,7 +137,7 @@ const allTestsPassed = computed(() =>
 const hasErrors = computed(() => tests.value.some((t) => t.status === "fail"));
 
 const apiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+  import.meta.env.VITE_API_BASE_URL || "https://api-noah.com/api";
 
 async function sendMessage() {
   if (!currentMessage.value.trim() || isLoading.value) return;
