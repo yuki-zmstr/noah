@@ -1,4 +1,4 @@
-name: Deploy to AWS
+name: Deploy to AWS (OIDC)
 
 on:
   push:
@@ -36,6 +36,7 @@ jobs:
       deploy_backend: ${{ steps.changes.outputs.backend }}
       deploy_frontend: ${{ steps.changes.outputs.frontend }}
       deploy_infrastructure: ${{ steps.changes.outputs.infrastructure }}
+      aws_role_arn: ${{ steps.env.outputs.aws_role_arn }}
 
     steps:
       - name: Checkout code
@@ -43,36 +44,45 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Determine environment
+      - name: Determine environment and AWS role
         id: env
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
+            ENVIRONMENT="production"
           else
-            echo "environment=staging" >> $GITHUB_OUTPUT
+            ENVIRONMENT="staging"
+          fi
+
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+
+          # Set AWS role ARN based on environment
+          if [[ "$ENVIRONMENT" == "production" ]]; then
+            echo "aws_role_arn=${{ secrets.AWS_ROLE_ARN_PRODUCTION }}" >> $GITHUB_OUTPUT
+          else
+            echo "aws_role_arn=${{ secrets.AWS_ROLE_ARN_STAGING }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Check for changes
         id: changes
         run: |
           # Check if backend files changed
-          if git diff --name-only HEAD~1 HEAD | grep -E '^python-backend/|^\.github/workflows/deploy\.yml$' > /dev/null; then
+          if git diff --name-only HEAD~1 HEAD | grep -E '^python-backend/|^\.github/workflows/deploy.*\.yml$' > /dev/null; then
             echo "backend=true" >> $GITHUB_OUTPUT
           else
             echo "backend=false" >> $GITHUB_OUTPUT
           fi
 
           # Check if frontend files changed
-          if git diff --name-only HEAD~1 HEAD | grep -E '^frontend/|^\.github/workflows/deploy\.yml$' > /dev/null; then
+          if git diff --name-only HEAD~1 HEAD | grep -E '^frontend/|^\.github/workflows/deploy.*\.yml$' > /dev/null; then
             echo "frontend=true" >> $GITHUB_OUTPUT
           else
             echo "frontend=false" >> $GITHUB_OUTPUT
           fi
 
           # Check if infrastructure files changed
-          if git diff --name-only HEAD~1 HEAD | grep -E '^infrastructure/|^\.github/workflows/deploy\.yml$' > /dev/null; then
+          if git diff --name-only HEAD~1 HEAD | grep -E '^infrastructure/|^\.github/workflows/deploy.*\.yml$' > /dev/null; then
             echo "infrastructure=true" >> $GITHUB_OUTPUT
           else
             echo "infrastructure=false" >> $GITHUB_OUTPUT
@@ -100,8 +110,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ needs.setup.outputs.aws_role_arn }}
+          role-session-name: GitHubActions-Deploy-Infrastructure
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Install CDK dependencies
@@ -129,8 +139,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ needs.setup.outputs.aws_role_arn }}
+          role-session-name: GitHubActions-Deploy-Backend
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -212,8 +222,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ needs.setup.outputs.aws_role_arn }}
+          role-session-name: GitHubActions-Deploy-Frontend
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Get backend endpoint
@@ -271,8 +281,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ needs.setup.outputs.aws_role_arn }}
+          role-session-name: GitHubActions-Verify-Deployment
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Get deployment URLs
@@ -339,8 +349,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ needs.setup.outputs.aws_role_arn }}
+          role-session-name: GitHubActions-Rollback
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Rollback backend

@@ -354,6 +354,15 @@ export class NoahInfrastructureStack extends cdk.Stack {
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
+        '/health': {
+          origin: new origins.LoadBalancerV2Origin(backendService.loadBalancer, {
+            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+          }),
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
         '/ws/*': {
           origin: new origins.LoadBalancerV2Origin(backendService.loadBalancer, {
             protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,

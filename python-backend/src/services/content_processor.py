@@ -133,7 +133,7 @@ class ContentProcessor:
             logger.error(f"Failed to initialize OpenAI client: {e}")
             self.openai_client = None
 
-    def analyze_content(self, content: str, language: str, metadata: ContentMetadata) -> ContentAnalysis:
+    def analyze_content(self, content: str, language: str, metadata: ContentMetadata, title: str = "Unknown") -> ContentAnalysis:
         """
         Analyze content for topics, complexity, reading level, and generate embeddings.
 
@@ -141,13 +141,14 @@ class ContentProcessor:
             content: The text content to analyze
             language: Language of the content ("english", "en", "japanese", "ja")
             metadata: Content metadata
+            title: Title of the content for logging purposes
 
         Returns:
             ContentAnalysis object with analysis results
         """
         # Normalize language identifier
         lang_key = self._normalize_language_key(language)
-        logger.info(f"Analyzing {lang_key} content: {metadata.title[:50]}...")
+        logger.info(f"Analyzing {lang_key} content: {title[:50]}...")
 
         # Set appropriate locale for processing
         original_locale = self._set_locale_for_language(lang_key)

@@ -193,3 +193,8 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.150.2",
+]

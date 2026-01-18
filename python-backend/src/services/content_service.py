@@ -36,7 +36,8 @@ class ContentService:
             analysis = self.processor.analyze_content(
                 content=content_data.content,
                 language=content_data.language,
-                metadata=content_data.metadata
+                metadata=content_data.metadata,
+                title=content_data.title
             )
 
             # Create content item with analysis
@@ -201,7 +202,7 @@ class ContentService:
             tags=[]
         )
 
-        return self.processor.analyze_content(text, language, metadata)
+        return self.processor.analyze_content(text, language, metadata, title="Analyzed Text")
 
 
 # Global instance

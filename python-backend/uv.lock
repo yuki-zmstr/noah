@@ -2041,6 +2041,11 @@ test = [
     { name = "pytest-cov" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13.1" },
@@ -2081,6 +2086,9 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev", "test", "docs"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "hypothesis", specifier = ">=6.150.2" }]
 
 [[package]]
 name = "numpy"

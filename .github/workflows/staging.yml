@@ -7,6 +7,11 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened]
 
+# Required for OIDC authentication with AWS
+permissions:
+  id-token: write
+  contents: read
+
 env:
   AWS_REGION: ap-northeast-1
   ECR_REPOSITORY: noah-backend-staging

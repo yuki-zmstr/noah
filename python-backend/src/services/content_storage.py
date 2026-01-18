@@ -67,7 +67,8 @@ class ContentStorageService:
             analysis = self.processor.analyze_content(
                 content=content_data.content,
                 language=content_data.language,
-                metadata=content_data.metadata
+                metadata=content_data.metadata,
+                title=content_data.title
             )
 
             # Extract additional metadata
