@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ChatSession } from '@/types/chat'
+import { useAuthStore } from '@/stores/auth'
 
 export const useChatStore = defineStore('chat', () => {
   // State
@@ -19,20 +20,61 @@ export const useChatStore = defineStore('chat', () => {
   const hasMessages = computed(() => messages.value.length > 0)
 
   // Actions
-  const initializeSession = (userId: string) => {
-    const sessionId = `session_${userId}_${Date.now()}`
+  const initializeSession = (userId?: string) => {
+    const authStore = useAuthStore()
+    const actualUserId = userId || authStore.userId
+    
+    if (!actualUserId) {
+      throw new Error('User ID is required to initialize session')
+    }
+
+    const sessionId = `session_${actualUserId}_${Date.now()}`
     currentSession.value = {
       sessionId,
-      userId,
+      userId: actualUserId,
       messages: [],
       isActive: true,
       lastActivity: new Date()
     }
-    messages.value = []
+    
+    // Load existing messages for this user
+    loadUserMessages(actualUserId)
     error.value = null
   }
 
+  const loadUserMessages = (userId: string) => {
+    try {
+      // Load messages from localStorage for this specific user
+      const storageKey = `noah_messages_${userId}`
+      const savedMessages = localStorage.getItem(storageKey)
+      
+      if (savedMessages) {
+        const parsedMessages = JSON.parse(savedMessages)
+        messages.value = parsedMessages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }))
+      } else {
+        messages.value = []
+      }
+    } catch (err) {
+      console.error('Failed to load user messages:', err)
+      messages.value = []
+    }
+  }
+
+  const saveUserMessages = (userId: string) => {
+    try {
+      const storageKey = `noah_messages_${userId}`
+      localStorage.setItem(storageKey, JSON.stringify(messages.value))
+    } catch (err) {
+      console.error('Failed to save user messages:', err)
+    }
+  }
+
   const addMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+    const authStore = useAuthStore()
+    
     const newMessage: ChatMessage = {
       ...message,
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -44,6 +86,11 @@ export const useChatStore = defineStore('chat', () => {
     if (currentSession.value) {
       currentSession.value.lastActivity = new Date()
       currentSession.value.messages.push(newMessage)
+    }
+    
+    // Save messages for the current user
+    if (authStore.userId) {
+      saveUserMessages(authStore.userId)
     }
     
     return newMessage
@@ -67,6 +114,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const addStreamingMessage = (content: string, type: ChatMessage['type'] = 'text') => {
+    const authStore = useAuthStore()
+    
     const newMessage: ChatMessage = {
       id: `msg_streaming_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
@@ -82,11 +131,18 @@ export const useChatStore = defineStore('chat', () => {
       currentSession.value.messages.push(newMessage)
     }
     
+    // Save messages for the current user
+    if (authStore.userId) {
+      saveUserMessages(authStore.userId)
+    }
+    
     return newMessage
   }
 
   const updateStreamingMessage = (messageId: string, content: string, metadata?: ChatMessage['metadata'], append: boolean = false) => {
+    const authStore = useAuthStore()
     const messageIndex = messages.value.findIndex(msg => msg.id === messageId)
+    
     if (messageIndex !== -1) {
       if (append) {
         // Append new content to existing content
@@ -114,6 +170,11 @@ export const useChatStore = defineStore('chat', () => {
           }
         }
       }
+      
+      // Save updated messages for the current user
+      if (authStore.userId) {
+        saveUserMessages(authStore.userId)
+      }
     }
   }
 
@@ -132,10 +193,25 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const clearMessages = () => {
+    const authStore = useAuthStore()
     messages.value = []
+    
     if (currentSession.value) {
       currentSession.value.messages = []
     }
+    
+    // Clear saved messages for the current user
+    if (authStore.userId) {
+      const storageKey = `noah_messages_${authStore.userId}`
+      localStorage.removeItem(storageKey)
+    }
+  }
+
+  const clearAllUserData = () => {
+    // Clear current session data
+    messages.value = []
+    currentSession.value = null
+    error.value = null
   }
 
   const setLoading = (loading: boolean) => {
@@ -151,9 +227,8 @@ export const useChatStore = defineStore('chat', () => {
       setLoading(true)
       setError(null)
       
-      // TODO: Implement API call to load message history
-      // For now, we'll just clear messages as if starting fresh
-      clearMessages()
+      // TODO: Implement API call to load message history from backend
+      // For now, messages are loaded from localStorage in loadUserMessages
       
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load message history')
@@ -175,6 +250,7 @@ export const useChatStore = defineStore('chat', () => {
     
     // Actions
     initializeSession,
+    loadUserMessages,
     addMessage,
     addUserMessage,
     addNoahMessage,
@@ -183,6 +259,7 @@ export const useChatStore = defineStore('chat', () => {
     appendToStreamingMessage,
     finalizeStreamingMessage,
     clearMessages,
+    clearAllUserData,
     setLoading,
     setError,
     loadMessageHistory

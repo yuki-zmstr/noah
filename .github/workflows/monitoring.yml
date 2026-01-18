@@ -40,27 +40,66 @@ jobs:
       - name: Check production health
         id: prod-health
         run: |
-          # Get production load balancer DNS
-          ECS_CLUSTER="NoahInfrastructureStack-NoahCluster"
-          ECS_SERVICE="NoahInfrastructureStack-NoahBackendService"
+          # Find the Noah cluster dynamically using CloudFormation
+          STACK_NAME="NoahInfrastructureStack"
 
-          # Find active service (blue or green)
-          BLUE_SERVICE="${ECS_SERVICE}-blue"
-          GREEN_SERVICE="${ECS_SERVICE}-green"
+          # Get cluster name from CloudFormation stack
+          ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
+            --stack-name $STACK_NAME \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
+            --output text 2>/dev/null || echo "")
 
-          BLUE_DESIRED=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $BLUE_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
-          GREEN_DESIRED=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $GREEN_SERVICE --query 'services[0].desiredCount' --output text 2>/dev/null || echo "0")
-
-          if [[ "$BLUE_DESIRED" != "0" ]]; then
-            ACTIVE_SERVICE=$BLUE_SERVICE
-          else
-            ACTIVE_SERVICE=$GREEN_SERVICE
+          if [[ -z "$ECS_CLUSTER" || "$ECS_CLUSTER" == "None" ]]; then
+            echo "status=not_deployed" >> $GITHUB_OUTPUT
+            echo "endpoint=" >> $GITHUB_OUTPUT
+            echo "ℹ️ Production ECS cluster not found in CloudFormation stack"
+            exit 0
           fi
 
+          echo "Found ECS cluster: $ECS_CLUSTER"
+
+          # Get service name from CloudFormation stack
+          ECS_SERVICE=$(aws cloudformation describe-stack-resources \
+            --stack-name $STACK_NAME \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Service`].PhysicalResourceId' \
+            --output text 2>/dev/null || echo "")
+
+          if [[ -z "$ECS_SERVICE" || "$ECS_SERVICE" == "None" ]]; then
+            echo "status=not_deployed" >> $GITHUB_OUTPUT
+            echo "endpoint=" >> $GITHUB_OUTPUT
+            echo "ℹ️ Production ECS service not found in CloudFormation stack"
+            exit 0
+          fi
+
+          echo "Found ECS service: $ECS_SERVICE"
+
           # Get load balancer DNS
-          TG_ARN=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ACTIVE_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text)
-          LB_ARN=$(aws elbv2 describe-target-groups --target-group-arns $TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text)
-          LB_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $LB_ARN --query 'LoadBalancers[0].DNSName' --output text)
+          TG_ARN=$(aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query 'services[0].loadBalancers[0].targetGroupArn' --output text 2>/dev/null || echo "")
+
+          if [[ -z "$TG_ARN" || "$TG_ARN" == "None" ]]; then
+            echo "status=not_deployed" >> $GITHUB_OUTPUT
+            echo "endpoint=" >> $GITHUB_OUTPUT
+            echo "ℹ️ Production load balancer not configured yet"
+            exit 0
+          fi
+
+          LB_ARN=$(aws elbv2 describe-target-groups --target-group-arns $TG_ARN --query 'TargetGroups[0].LoadBalancerArns[0]' --output text 2>/dev/null || echo "")
+
+          if [[ -z "$LB_ARN" || "$LB_ARN" == "None" ]]; then
+            echo "status=not_deployed" >> $GITHUB_OUTPUT
+            echo "endpoint=" >> $GITHUB_OUTPUT
+            echo "ℹ️ Production load balancer not found"
+            exit 0
+          fi
+
+          LB_DNS=$(aws elbv2 describe-load-balancers --load-balancer-arns $LB_ARN --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || echo "")
+
+          if [[ -z "$LB_DNS" || "$LB_DNS" == "None" ]]; then
+            echo "status=not_deployed" >> $GITHUB_OUTPUT
+            echo "endpoint=" >> $GITHUB_OUTPUT
+            echo "ℹ️ Production load balancer DNS not available"
+            exit 0
+          fi
 
           echo "endpoint=http://$LB_DNS" >> $GITHUB_OUTPUT
 

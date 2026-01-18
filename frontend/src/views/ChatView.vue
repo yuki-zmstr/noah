@@ -49,10 +49,14 @@
           </div>
         </div>
         <div class="flex items-center space-x-3">
+          <span class="text-sm text-gray-600">{{ authStore.userEmail }}</span>
           <LanguageToggle />
           <RouterLink to="/preferences" class="btn-secondary text-sm">
             {{ languageStore.isEnglish ? "Preferences" : "設定" }}
           </RouterLink>
+          <button @click="handleLogout" class="btn-secondary text-sm">
+            {{ languageStore.isEnglish ? "Logout" : "ログアウト" }}
+          </button>
         </div>
       </div>
     </header>
@@ -69,8 +73,8 @@
           <div>
             {{
               languageStore.isEnglish
-                ? "Start a conversation with Noah about books and reading!"
-                : "ノアと本や読書について会話を始めましょう！"
+                ? `Welcome back, ${authStore.user?.name || "there"}! Start a conversation with Noah about books and reading!`
+                : `おかえりなさい、${authStore.user?.name || "さん"}！ノアと本や読書について会話を始めましょう！`
             }}
           </div>
           <div class="text-xs">
@@ -190,8 +194,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, watch } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { useChatStore } from "@/stores/chat";
+import { useAuthStore } from "@/stores/auth";
 import { useLanguageStore } from "@/stores/language";
 import { useHttpStreaming } from "@/composables/useHttpStreaming";
 import ChatMessage from "@/components/ChatMessage.vue";
@@ -199,7 +204,9 @@ import LanguageToggle from "@/components/LanguageToggle.vue";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
 
 // Store and composables
+const router = useRouter();
 const chatStore = useChatStore();
+const authStore = useAuthStore();
 const languageStore = useLanguageStore();
 const {
   isStreaming,
@@ -218,15 +225,10 @@ const messageInput = ref("");
 const messagesContainer = ref<HTMLElement>();
 const currentStreamingMessage = ref<ChatMessageType | null>(null);
 
-// Computed properties from store - use store directly for reactivity
-
-// Mock user ID for development
-const userId = "user_" + Math.random().toString(36).substr(2, 9);
-
 // Methods
 const sendMessage = async () => {
   const message = messageInput.value.trim();
-  if (!message || isStreaming.value) return;
+  if (!message || isStreaming.value || !authStore.userId) return;
 
   // Add user message to store
   chatStore.addUserMessage(message);
@@ -238,7 +240,7 @@ const sendMessage = async () => {
       await sendHttpMessage(
         message,
         chatStore.currentSession.sessionId,
-        userId,
+        authStore.userId,
         {
           language: languageStore.currentLanguage,
         },
@@ -254,6 +256,17 @@ const sendMessage = async () => {
   scrollToBottom();
 };
 
+const handleLogout = () => {
+  // Clear chat data for current user
+  chatStore.clearAllUserData();
+
+  // Logout user
+  authStore.logout();
+
+  // Redirect to login
+  router.push("/login");
+};
+
 const clearError = () => {
   chatStore.setError(null);
 };
@@ -263,7 +276,7 @@ const handleRecommendationFeedback = async (
   feedbackType: "interested" | "not_interested",
 ) => {
   // Send feedback via HTTP streaming
-  if (chatStore.currentSession && !isStreaming.value) {
+  if (chatStore.currentSession && !isStreaming.value && authStore.userId) {
     const feedbackMessage =
       feedbackType === "interested"
         ? `I'm interested in this book recommendation (ID: ${bookId})`
@@ -273,7 +286,7 @@ const handleRecommendationFeedback = async (
       await sendHttpMessage(
         feedbackMessage,
         chatStore.currentSession.sessionId,
-        userId,
+        authStore.userId,
         {
           type: "feedback",
           bookId,
@@ -290,14 +303,14 @@ const handleRecommendationFeedback = async (
 
 const handlePurchaseInquiry = async (title: string, author: string) => {
   // Send purchase inquiry via HTTP streaming
-  if (chatStore.currentSession && !isStreaming.value) {
+  if (chatStore.currentSession && !isStreaming.value && authStore.userId) {
     const inquiryMessage = `Where can I buy "${title}" by ${author}?`;
 
     try {
       await sendHttpMessage(
         inquiryMessage,
         chatStore.currentSession.sessionId,
-        userId,
+        authStore.userId,
         {
           type: "purchase_inquiry",
           bookTitle: title,
@@ -314,7 +327,7 @@ const handlePurchaseInquiry = async (title: string, author: string) => {
 
 const activateDiscoveryMode = async () => {
   // Send discovery mode activation message
-  if (chatStore.currentSession && !isStreaming.value) {
+  if (chatStore.currentSession && !isStreaming.value && authStore.userId) {
     const discoveryMessage = languageStore.isEnglish
       ? "I'm feeling lucky! Surprise me with something new to read."
       : "何かおすすめして！新しい本を教えて。";
@@ -326,7 +339,7 @@ const activateDiscoveryMode = async () => {
       await sendHttpMessage(
         discoveryMessage,
         chatStore.currentSession.sessionId,
-        userId,
+        authStore.userId,
         {
           type: "discovery_mode",
           language: languageStore.currentLanguage,
@@ -445,8 +458,16 @@ watch(streamError, (error) => {
 
 // Initialize on mount
 onMounted(async () => {
+  // Ensure user is authenticated
+  if (!authStore.isAuthenticated) {
+    router.push("/login");
+    return;
+  }
+
   languageStore.initializeLanguage();
-  chatStore.initializeSession(userId);
+
+  // Initialize chat session with authenticated user
+  chatStore.initializeSession(authStore.userId);
 
   // Load conversation history
   await loadConversationHistory();
