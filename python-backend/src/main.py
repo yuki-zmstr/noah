@@ -93,8 +93,12 @@ def create_app() -> FastAPI:
     
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_credentials=allow_credentials,
+        allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://master.d7603dy3bkh3g.amplifyapp.com",
+        ],
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
