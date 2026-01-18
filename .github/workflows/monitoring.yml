@@ -23,6 +23,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Debug AWS credentials presence and test auth
+        run: |
+          echo "Checking secrets presence..."
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then echo "AWS_ACCESS_KEY_ID is set"; else echo "AWS_ACCESS_KEY_ID is MISSING"; fi
+          if [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then echo "AWS_SECRET_ACCESS_KEY is set"; else echo "AWS_SECRET_ACCESS_KEY is MISSING"; fi
+          echo "Attempting to call STS to verify credentials..."
+          # This will succeed if Configure AWS Credentials step provided usable credentials
+          if aws sts get-caller-identity --output json; then
+            echo "AWS STS succeeded"
+          else
+            echo "AWS STS failed — credentials not usable"
+            exit 1
+          fi
+
       - name: Check production health
         id: prod-health
         run: |
