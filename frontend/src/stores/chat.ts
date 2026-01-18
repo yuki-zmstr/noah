@@ -227,8 +227,6 @@ export const useChatStore = defineStore('chat', () => {
         chunkId = `${Date.now()}_${Math.abs(contentHash)}_${content.length}`
       }
 
-      console.log(`[chat.ts] Processing chunk ${chunkId}, content length: ${content.length}, total processed: ${processedChunks.size}`)
-
       // Check if this chunk has already been processed
       if (processedChunks.has(chunkId)) {
         console.warn(`[chat.ts] Duplicate chunk detected and skipped: ${chunkId}`)

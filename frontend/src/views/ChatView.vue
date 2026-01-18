@@ -231,9 +231,21 @@ const sendMessage = async () => {
   const message = messageInput.value.trim();
   if (!message || isStreaming.value || !authStore.userId) return;
 
+  console.log(`[ChatView] Sending new message: "${message}"`);
+  console.log(
+    `[ChatView] Current streaming message before send:`,
+    currentStreamingMessage.value?.id,
+  );
+
   // Add user message to store
   chatStore.addUserMessage(message);
   messageInput.value = "";
+
+  // Reset streaming message for new conversation
+  currentStreamingMessage.value = null;
+  console.log(
+    `[ChatView] Reset currentStreamingMessage to null before new request`,
+  );
 
   // Send via HTTP streaming
   if (chatStore.currentSession) {
@@ -398,9 +410,13 @@ unsubscribeFunctions.push(
     }
 
     if (!currentStreamingMessage.value) {
-      // Start a new streaming message with the first chunk
-      currentStreamingMessage.value = chatStore.addStreamingMessage(
+      // Start a new streaming message with empty content, then append the first chunk
+      currentStreamingMessage.value = chatStore.addStreamingMessage("");
+      // Now append the first chunk like any other chunk
+      chatStore.appendToStreamingMessage(
+        currentStreamingMessage.value.id,
         chunk.content,
+        { sequence: chunk.sequence },
       );
     } else {
       // Append new chunk to existing streaming message with deduplication
@@ -412,7 +428,7 @@ unsubscribeFunctions.push(
     }
 
     nextTick(() => scrollToBottom());
-  })
+  }),
 );
 
 // Handle recommendations
@@ -433,7 +449,7 @@ unsubscribeFunctions.push(
       }
     }
     nextTick(() => scrollToBottom());
-  })
+  }),
 );
 
 // Handle message completion
@@ -445,7 +461,7 @@ unsubscribeFunctions.push(
       currentStreamingMessage.value = null;
     }
     nextTick(() => scrollToBottom());
-  })
+  }),
 );
 
 // Handle streaming errors
@@ -464,7 +480,7 @@ unsubscribeFunctions.push(
       chatStore.addNoahMessage(data.content, "text");
     }
     nextTick(() => scrollToBottom());
-  })
+  }),
 );
 
 // Watch for stream errors
@@ -493,9 +509,13 @@ onMounted(async () => {
 
 // Cleanup on unmount to prevent duplicate handlers
 onBeforeUnmount(() => {
+  console.log(
+    `[ChatView] Cleaning up ${unsubscribeFunctions.length} event handlers`,
+  );
   // Call all unsubscribe functions
-  unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+  unsubscribeFunctions.forEach((unsubscribe) => unsubscribe());
   // Clear the handler arrays
   cleanup();
+  console.log(`[ChatView] Cleanup completed`);
 });
 </script>

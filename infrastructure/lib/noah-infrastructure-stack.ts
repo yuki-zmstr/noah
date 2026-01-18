@@ -158,6 +158,17 @@ export class NoahInfrastructureStack extends cdk.Stack {
     //   },
     // })
 
+    // ECS Task Execution Role for migrations
+    const migrationExecutionRole = new iam.Role(this, 'MigrationExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+      ],
+    })
+
+    // Allow the migration execution role to access the database secret
+    database.secret?.grantRead(migrationExecutionRole)
+
     // ECS Cluster for backend services
     const cluster = new ecs.Cluster(this, 'NoahCluster', {
       vpc,
@@ -532,6 +543,11 @@ export class NoahInfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'EcrRepositoryUri', {
       value: ecrRepository.repositoryUri,
       description: 'ECR Repository URI for backend images',
+    })
+
+    new cdk.CfnOutput(this, 'MigrationExecutionRoleArn', {
+      value: migrationExecutionRole.roleArn,
+      description: 'ECS Task Execution Role ARN for migrations',
     })
   }
 }
