@@ -69,7 +69,8 @@ class DiscoveryModeEngine:
         logger.info(f"Generating discovery recommendations for user {user_id}")
 
         if not db:
-            db = db_service.get_session()
+            # Database session must be provided by the caller
+            raise ValueError("Database session must be provided to generate_discovery_recommendations")
 
         try:
             # Get user profile and reading history
@@ -672,8 +673,21 @@ class DiscoveryModeEngine:
     ) -> None:
         """Track user response to discovery recommendation."""
         if not db:
-            db = db_service.get_session()
+            # Use context manager for database session
+            from src.services.database import db_service
+            with db_service.get_session() as db:
+                await self._track_discovery_response_with_session(user_id, content_id, response, db)
+        else:
+            await self._track_discovery_response_with_session(user_id, content_id, response, db)
 
+    async def _track_discovery_response_with_session(
+        self,
+        user_id: str,
+        content_id: str,
+        response: str,
+        db: Session
+    ) -> None:
+        """Internal method to track discovery response with provided session."""
         try:
             # Find the discovery recommendation
             discovery_rec = db.query(DiscoveryRecommendation).filter(

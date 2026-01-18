@@ -23,11 +23,11 @@ fi
 # Check if the specific model we're using is available
 echo ""
 echo "🔍 Checking for Claude 3.5 Sonnet model..."
-MODEL_ID="anthropic.claude-3-5-sonnet-20241022-v2:0"
+MODEL_ID="anthropic.claude-3-5-sonnet-20240620-v1:0"
 if aws bedrock get-foundation-model --model-identifier "$MODEL_ID" >/dev/null 2>&1; then
-    echo "✅ Claude 3.5 Sonnet model is available"
+    echo "✅ Claude 3.5 Sonnet v1 model is available"
 else
-    echo "❌ Claude 3.5 Sonnet model is not available"
+    echo "❌ Claude 3.5 Sonnet v1 model is not available"
     echo "Available Anthropic models:"
     aws bedrock list-foundation-models --by-provider anthropic --query 'modelSummaries[*].{ModelId:modelId,Name:modelName}' --output table 2>/dev/null || echo "No Anthropic models found"
 fi
@@ -48,11 +48,19 @@ if aws logs describe-log-groups --log-group-name-prefix "$LOG_GROUP" >/dev/null 
         # Check for Bedrock/Strands errors in the last 10 minutes
         START_TIME=$(date -d '10 minutes ago' +%s)000
         
-        echo "🔍 Checking for Bedrock errors..."
+        echo "🔍 Checking for Bedrock ValidationException errors..."
         if aws logs filter-log-events --log-group-name "$LOG_GROUP" --log-stream-names "$RECENT_STREAM" --start-time "$START_TIME" --filter-pattern "ValidationException" --query 'events[].message' --output text | grep -i "model identifier"; then
             echo "❌ Found Bedrock model identifier errors in recent logs"
         else
             echo "✅ No Bedrock model identifier errors found in recent logs"
+        fi
+        
+        echo "🔍 Checking for AWS Marketplace permission errors..."
+        if aws logs filter-log-events --log-group-name "$LOG_GROUP" --log-stream-names "$RECENT_STREAM" --start-time "$START_TIME" --filter-pattern "AccessDeniedException" --query 'events[].message' --output text | grep -i "marketplace"; then
+            echo "❌ Found AWS Marketplace permission errors in recent logs"
+            echo "💡 Run: ./scripts/update-bedrock-marketplace-permissions.sh"
+        else
+            echo "✅ No AWS Marketplace permission errors found in recent logs"
         fi
         
         echo "🔍 Checking for Strands agent errors..."
@@ -72,10 +80,11 @@ echo ""
 echo "🏁 Bedrock permissions test completed"
 echo ""
 echo "💡 If you see permission or model access errors:"
-echo "1. Run: ./scripts/update-cloudwatch-permissions.sh (includes Bedrock permissions)"
-echo "2. Enable Anthropic models in AWS Console > Bedrock > Model Access"
-echo "3. Wait for the ECS service to restart (2-3 minutes)"
-echo "4. Run this test again"
+echo "1. For marketplace permissions: ./scripts/update-bedrock-marketplace-permissions.sh"
+echo "2. For general Bedrock permissions: ./scripts/update-cloudwatch-permissions.sh"
+echo "3. Enable Anthropic models in AWS Console > Bedrock > Model Access"
+echo "4. Wait for the ECS service to restart (2-3 minutes)"
+echo "5. Run this test again"
 echo ""
 echo "🌐 To enable Anthropic models:"
 echo "https://console.aws.amazon.com/bedrock/home#/modelaccess"

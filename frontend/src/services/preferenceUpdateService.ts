@@ -1,5 +1,3 @@
-import { usePreferencesStore } from '@/stores/preferences'
-import { useChatStore } from '@/stores/chat'
 import { awsConfig } from '@/config/aws-config'
 import type { PreferenceOverride, PreferenceTransparency } from '@/types/preferences'
 
@@ -14,19 +12,28 @@ export interface PreferenceUpdateImpact {
 }
 
 export class PreferenceUpdateService {
-  private preferencesStore = usePreferencesStore()
-  private chatStore = useChatStore()
+  private async getPreferencesStore() {
+    const { usePreferencesStore } = await import('@/stores/preferences')
+    return usePreferencesStore()
+  }
+
+  private async getChatStore() {
+    const { useChatStore } = await import('@/stores/chat')
+    return useChatStore()
+  }
 
   async updatePreferenceWithImpact(
     userId: string, 
     override: PreferenceOverride
   ): Promise<PreferenceUpdateImpact[]> {
     try {
+      const preferencesStore = await this.getPreferencesStore()
+      
       // Calculate impact before update
-      const impactAnalysis = this.calculatePreferenceImpact(override)
+      const impactAnalysis = await this.calculatePreferenceImpact(override)
       
       // Update preference via API
-      const result = await this.preferencesStore.overridePreference(userId, override)
+      const result = await preferencesStore.overridePreference(userId, override)
       
       // Send HTTP notification for immediate recommendation refresh
       const updateResult = await this.sendPreferenceUpdate(userId, {
@@ -37,11 +44,11 @@ export class PreferenceUpdateService {
       })
 
       // Add impact message to chat
-      this.addImpactMessageToChat(override, impactAnalysis)
+      await this.addImpactMessageToChat(override, impactAnalysis)
 
       // Handle any new recommendations from the update
       if (updateResult.new_recommendations && updateResult.new_recommendations.length > 0) {
-        this.handleRecommendationRefresh(updateResult.new_recommendations)
+        await this.handleRecommendationRefresh(updateResult.new_recommendations)
       }
 
       return impactAnalysis
@@ -57,7 +64,8 @@ export class PreferenceUpdateService {
     newLevel: number
   ): Promise<PreferenceUpdateImpact[]> {
     try {
-      const currentLevels = this.preferencesStore.readingLevels
+      const preferencesStore = await this.getPreferencesStore()
+      const currentLevels = preferencesStore.readingLevels
       if (!currentLevels) throw new Error('No reading levels available')
 
       const oldLevel = currentLevels[language].level
@@ -70,7 +78,7 @@ export class PreferenceUpdateService {
         level: newLevel
       }
 
-      await this.preferencesStore.updateReadingLevels(userId, updatedLevels)
+      await preferencesStore.updateReadingLevels(userId, updatedLevels)
 
       // Send HTTP notification
       const updateResult = await this.sendPreferenceUpdate(userId, {
@@ -83,11 +91,11 @@ export class PreferenceUpdateService {
       })
 
       // Add impact message to chat
-      this.addReadingLevelImpactToChat(language, oldLevel, newLevel, impact)
+      await this.addReadingLevelImpactToChat(language, oldLevel, newLevel, impact)
 
       // Handle any new recommendations from the update
       if (updateResult.new_recommendations && updateResult.new_recommendations.length > 0) {
-        this.handleRecommendationRefresh(updateResult.new_recommendations)
+        await this.handleRecommendationRefresh(updateResult.new_recommendations)
       }
 
       return impact
@@ -115,8 +123,9 @@ export class PreferenceUpdateService {
       
       // Update local preferences store with real-time data
       if (result.updated_preferences) {
-        this.preferencesStore.transparencyData = result.updated_preferences
-        this.preferencesStore.lastUpdated = new Date(result.timestamp)
+        const preferencesStore = await this.getPreferencesStore()
+        preferencesStore.transparencyData = result.updated_preferences
+        preferencesStore.lastUpdated = new Date(result.timestamp)
       }
 
       return result
@@ -126,11 +135,12 @@ export class PreferenceUpdateService {
     }
   }
 
-  private calculatePreferenceImpact(override: PreferenceOverride): PreferenceUpdateImpact[] {
+  private async calculatePreferenceImpact(override: PreferenceOverride): Promise<PreferenceUpdateImpact[]> {
+    const preferencesStore = await this.getPreferencesStore()
     const impacts: PreferenceUpdateImpact[] = []
     
     if (override.type === 'topic') {
-      const existingTopic = this.preferencesStore.topicPreferences.find(
+      const existingTopic = preferencesStore.topicPreferences.find(
         tp => tp.topic === override.key
       )
       
@@ -147,7 +157,7 @@ export class PreferenceUpdateService {
         affectedRecommendations: this.estimateAffectedRecommendations(change)
       })
     } else if (override.type === 'content_type') {
-      const existingType = this.preferencesStore.contentTypePreferences.find(
+      const existingType = preferencesStore.contentTypePreferences.find(
         ctp => ctp.type === override.key
       )
       
@@ -225,13 +235,14 @@ export class PreferenceUpdateService {
     return Math.floor(Math.random() * 3) + 2 // 2-4 recommendations
   }
 
-  private addImpactMessageToChat(override: PreferenceOverride, impacts: PreferenceUpdateImpact[]) {
+  private async addImpactMessageToChat(override: PreferenceOverride, impacts: PreferenceUpdateImpact[]) {
     const impact = impacts[0]
     if (!impact) return
 
+    const chatStore = await this.getChatStore()
     const message = `I've updated your ${override.type.replace('_', ' ')} preference for "${impact.item}". ${impact.impactDescription} This may affect about ${impact.affectedRecommendations} future recommendations.`
     
-    this.chatStore.addNoahMessage(message, 'text', {
+    chatStore.addNoahMessage(message, 'text', {
       preferenceUpdate: {
         type: override.type,
         item: impact.item,
@@ -241,7 +252,7 @@ export class PreferenceUpdateService {
     })
   }
 
-  private addReadingLevelImpactToChat(
+  private async addReadingLevelImpactToChat(
     language: string,
     oldLevel: number,
     newLevel: number,
@@ -250,9 +261,10 @@ export class PreferenceUpdateService {
     const impact = impacts[0]
     if (!impact) return
 
+    const chatStore = await this.getChatStore()
     const message = `I've updated your ${language} reading level from ${oldLevel.toFixed(1)} to ${newLevel.toFixed(1)}. ${impact.impactDescription} This will help me suggest more appropriate content for you.`
     
-    this.chatStore.addNoahMessage(message, 'text', {
+    chatStore.addNoahMessage(message, 'text', {
       readingLevelUpdate: {
         language,
         oldLevel,
@@ -262,12 +274,13 @@ export class PreferenceUpdateService {
     })
   }
 
-  private handleRecommendationRefresh(recommendations: any[]) {
+  private async handleRecommendationRefresh(recommendations: any[]) {
     // Handle refreshed recommendations
     if (recommendations && recommendations.length > 0) {
+      const chatStore = await this.getChatStore()
       const message = `Based on your updated preferences, I've found ${recommendations.length} new recommendations that might interest you!`
       
-      this.chatStore.addNoahMessage(message, 'recommendation', {
+      chatStore.addNoahMessage(message, 'recommendation', {
         recommendations: recommendations
       })
     }
@@ -291,7 +304,7 @@ export class PreferenceUpdateService {
       
       // Add recommendations to chat
       if (recommendations.length > 0) {
-        this.handleRecommendationRefresh(recommendations)
+        await this.handleRecommendationRefresh(recommendations)
       }
       
       return recommendations

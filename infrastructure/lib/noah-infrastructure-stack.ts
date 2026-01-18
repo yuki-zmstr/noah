@@ -270,6 +270,18 @@ export class NoahInfrastructureStack extends cdk.Stack {
       })
     )
 
+    // Add AWS Marketplace permissions for Bedrock model access
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'aws-marketplace:ViewSubscriptions',
+          'aws-marketplace:Subscribe'
+        ],
+        resources: ['*'],
+      })
+    )
+
     // Bastion Host for database access
     const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
       vpc,

@@ -70,7 +70,8 @@ class ContextualRecommendationEngine:
             f"Generating contextual recommendations for user {user_id}")
 
         if not db:
-            db = db_service.get_session()
+            # Database session must be provided by the caller
+            raise ValueError("Database session must be provided to generate_contextual_recommendations")
 
         try:
             # Get user profile

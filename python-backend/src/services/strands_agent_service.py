@@ -56,18 +56,22 @@ class StrandsAgentService:
                 List of book recommendations with titles, authors, and descriptions
             """
             try:
-                # Get user profile
-                user_profile = await self.user_profile_service.get_or_create_profile(user_id, None)
+                from src.services.database import db_service
                 
-                # Generate recommendations using the recommendation engine
-                recommendations = await self.recommendation_engine.generate_contextual_recommendations(
-                    user_id=user_id,
-                    context=context or {},
-                    limit=limit,
-                    db=None  # Will need to pass db session
-                )
-                
-                return recommendations
+                # Use database session context manager
+                with db_service.get_session() as db:
+                    # Get user profile
+                    user_profile = await self.user_profile_service.get_or_create_profile(user_id, db)
+                    
+                    # Generate recommendations using the recommendation engine
+                    recommendations = await self.recommendation_engine.generate_contextual_recommendations(
+                        user_id=user_id,
+                        context=context or {},
+                        limit=limit,
+                        db=db
+                    )
+                    
+                    return recommendations
             except Exception as e:
                 logger.error(f"Error getting recommendations: {e}")
                 return []
@@ -89,17 +93,21 @@ class StrandsAgentService:
                 List of discovery book recommendations that expand user's reading horizons
             """
             try:
-                # Get user profile
-                user_profile = await self.user_profile_service.get_or_create_profile(user_id, None)
+                from src.services.database import db_service
                 
-                # Generate discovery recommendations
-                recommendations = await self.discovery_engine.generate_discovery_recommendations(
-                    user_id=user_id,
-                    limit=limit,
-                    db=None  # Will need to pass db session
-                )
-                
-                return recommendations
+                # Use database session context manager
+                with db_service.get_session() as db:
+                    # Get user profile
+                    user_profile = await self.user_profile_service.get_or_create_profile(user_id, db)
+                    
+                    # Generate discovery recommendations
+                    recommendations = await self.discovery_engine.generate_discovery_recommendations(
+                        user_id=user_id,
+                        limit=limit,
+                        db=db
+                    )
+                    
+                    return recommendations
             except Exception as e:
                 logger.error(f"Error getting discovery recommendations: {e}")
                 return []
