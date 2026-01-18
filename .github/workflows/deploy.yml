@@ -21,7 +21,6 @@ env:
   AWS_REGION: ap-northeast-1
   ECR_REPOSITORY: noah-backend
   STACK_NAME: NoahInfrastructureStack
-  AMPLIFY_APP_ID: d7603dy3bkh3g
 
 jobs:
   # Determine deployment environment
@@ -31,7 +30,6 @@ jobs:
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       deploy_backend: ${{ steps.changes.outputs.backend }}
-      deploy_frontend: ${{ steps.changes.outputs.frontend }}
       deploy_infrastructure: ${{ steps.changes.outputs.infrastructure }}
 
     steps:
@@ -206,81 +204,12 @@ jobs:
             sleep 10
           done
 
-  # Deploy Frontend
-  deploy-frontend:
-    name: Deploy Frontend
-    runs-on: ubuntu-latest
-    needs: [setup, deploy-backend]
-    if: always() && needs.setup.outputs.deploy_frontend == 'true'
-    environment: ${{ needs.setup.outputs.environment }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Get backend endpoint
-        id: backend-endpoint
-        run: |
-          LOAD_BALANCER_DNS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
-          echo "dns=$LOAD_BALANCER_DNS" >> $GITHUB_OUTPUT
-
-      - name: Install dependencies
-        working-directory: ./frontend
-        run: npm ci
-
-      - name: Build frontend
-        working-directory: ./frontend
-        env:
-          VITE_API_ENDPOINT: http://${{ steps.backend-endpoint.outputs.dns }}
-          VITE_API_BASE_URL: http://${{ steps.backend-endpoint.outputs.dns }}/api
-          VITE_AWS_REGION: ${{ env.AWS_REGION }}
-          VITE_COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-          VITE_COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-          VITE_COGNITO_IDENTITY_POOL_ID: ${{ secrets.COGNITO_IDENTITY_POOL_ID }}
-        run: npm run build
-
-      - name: Deploy to Amplify
-        run: |
-          # Create deployment package
-          cd frontend/dist
-          zip -r ../deployment.zip .
-          cd ..
-
-          # Start deployment
-          DEPLOYMENT_ID=$(aws amplify start-deployment \
-            --app-id ${{ env.AMPLIFY_APP_ID }} \
-            --branch-name main \
-            --source-url "s3://amplify-deployments/deployment-${{ github.sha }}.zip" \
-            --query 'jobSummary.jobId' --output text)
-
-          # Upload deployment package
-          aws s3 cp deployment.zip "s3://amplify-deployments/deployment-${{ github.sha }}.zip"
-
-          # Wait for deployment to complete
-          aws amplify wait job-complete --app-id ${{ env.AMPLIFY_APP_ID }} --branch-name main --job-id $DEPLOYMENT_ID
-
-          echo "Frontend deployment completed with job ID: $DEPLOYMENT_ID"
-
   # Post-deployment verification
   verify-deployment:
     name: Verify Deployment
     runs-on: ubuntu-latest
-    needs: [setup, deploy-backend, deploy-frontend]
-    if: always() && (needs.deploy-backend.result == 'success' || needs.deploy-frontend.result == 'success')
+    needs: [setup, deploy-backend]
+    if: always() && needs.deploy-backend.result == 'success'
     environment: ${{ needs.setup.outputs.environment }}
 
     steps:
@@ -294,13 +223,9 @@ jobs:
       - name: Get deployment URLs
         id: urls
         run: |
-          # Get backend URL
-          BACKEND_DNS=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
+          # Get backend URL using the discovered resources
+          BACKEND_DNS=$(aws ecs describe-services --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
           echo "backend=http://$BACKEND_DNS" >> $GITHUB_OUTPUT
-
-          # Get frontend URL
-          FRONTEND_URL=$(aws amplify get-app --app-id ${{ env.AMPLIFY_APP_ID }} --query 'app.defaultDomain' --output text)
-          echo "frontend=https://$FRONTEND_URL" >> $GITHUB_OUTPUT
 
       - name: Run smoke tests
         run: |
@@ -309,9 +234,6 @@ jobs:
 
           echo "Testing backend API..."
           curl -f "${{ steps.urls.outputs.backend }}/api/config" || exit 1
-
-          echo "Testing frontend..."
-          curl -f "${{ steps.urls.outputs.frontend }}" || exit 1
 
           echo "All smoke tests passed!"
 
@@ -327,10 +249,9 @@ jobs:
 
             **Environment:** ${environment}
             **Backend URL:** ${{ steps.urls.outputs.backend }}
-            **Frontend URL:** ${{ steps.urls.outputs.frontend }}
             **Commit:** ${{ github.sha }}
 
-            ${success ? 'Deployment completed successfully!' : 'Deployment failed. Check logs for details.'}
+            ${success ? 'Backend deployment completed successfully! Frontend will be deployed automatically by Amplify.' : 'Deployment failed. Check logs for details.'}
             `;
 
             // Create deployment status
@@ -348,7 +269,7 @@ jobs:
     name: Rollback Deployment
     runs-on: ubuntu-latest
     if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    needs: [setup, deploy-backend, deploy-frontend, verify-deployment]
+    needs: [setup, deploy-backend, verify-deployment]
     environment: ${{ needs.setup.outputs.environment }}
 
     steps:
@@ -385,34 +306,18 @@ jobs:
             echo "No previous revision available for rollback"
           fi
 
-      - name: Rollback frontend
-        if: needs.deploy-frontend.result == 'failure'
-        run: |
-          echo "Rolling back frontend deployment..."
-
-          # Get previous deployment
-          PREVIOUS_DEPLOYMENT=$(aws amplify list-jobs --app-id ${{ env.AMPLIFY_APP_ID }} --branch-name main --max-results 2 --query 'jobSummaries[1].jobId' --output text)
-
-          if [ "$PREVIOUS_DEPLOYMENT" != "None" ]; then
-            # Trigger rollback by redeploying previous version
-            aws amplify start-job --app-id ${{ env.AMPLIFY_APP_ID }} --branch-name main --job-type RELEASE --job-id $PREVIOUS_DEPLOYMENT
-            
-            echo "Frontend rollback initiated"
-          else
-            echo "No previous deployment available for rollback"
-          fi
-
       - name: Notify rollback
         uses: actions/github-script@v7
         with:
           script: |
-            const body = `## 🔄 Automatic Rollback Initiated
+            const body = `## 🔄 Automatic Backend Rollback Initiated
 
             **Environment:** ${{ needs.setup.outputs.environment }}
-            **Reason:** Deployment verification failed
+            **Reason:** Backend deployment verification failed
             **Commit:** ${{ github.sha }}
 
-            The system has automatically initiated a rollback to the previous stable version.
+            The system has automatically initiated a backend rollback to the previous stable version.
+            Frontend deployment will continue via Amplify if needed.
             `;
 
             github.rest.issues.createComment({

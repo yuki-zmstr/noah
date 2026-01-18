@@ -16,7 +16,7 @@ The authentication system has been implemented with the following components:
 
 2. **Login Form** (`frontend/src/components/LoginForm.vue`)
    - Simple email/password login interface
-   - Clean, modern design with Noah branding
+   - Clean, modern design with Noah branding (circular "N" logo)
    - Loading states and error handling
    - Demo credentials note for testing
 
