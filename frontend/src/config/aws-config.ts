@@ -16,7 +16,7 @@ const productionConfig = {
   userPoolId: 'ap-northeast-1_K4gyhxpG9',
   userPoolWebClientId: '14ivj9dtdk1c65t390g1l9vbpc',
   identityPoolId: 'ap-northeast-1:af1ce951-b348-41d1-9a7a-50fceb21efd2',
-  apiEndpoint: 'https://api-noah.com',
+  apiEndpoint: 'https://d33z9owyqf2ey4.cloudfront.net',
 }
 
 // Development configuration

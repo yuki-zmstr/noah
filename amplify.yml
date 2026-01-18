@@ -5,8 +5,8 @@ environment:
     VITE_COGNITO_USER_POOL_ID: ap-northeast-1_K4gyhxpG9
     VITE_COGNITO_CLIENT_ID: 14ivj9dtdk1c65t390g1l9vbpc
     VITE_COGNITO_IDENTITY_POOL_ID: ap-northeast-1:af1ce951-b348-41d1-9a7a-50fceb21efd2
-    VITE_API_ENDPOINT: https://api-noah.com
-    VITE_API_BASE_URL: https://api-noah.com/api
+    VITE_API_ENDPOINT: https://d33z9owyqf2ey4.cloudfront.net
+    VITE_API_BASE_URL: https://d33z9owyqf2ey4.cloudfront.net/api
     VITE_ENABLE_DISCOVERY_MODE: true
     VITE_ENABLE_MULTILINGUAL: true
     VITE_DEFAULT_LANGUAGE: english
