@@ -111,8 +111,9 @@ class AIResponseService:
                 
         except Exception as e:
             logger.error(f"Error generating streaming AI response: {e}")
-            fallback_response = self._generate_fallback_response(user_message, intent)
-            yield fallback_response
+            # Don't yield the entire fallback response as one chunk - this could cause duplication
+            # Instead, let the caller handle the error appropriately
+            raise
 
     def _build_noah_system_prompt(self) -> str:
         """Build Noah's personality and behavior system prompt."""

@@ -69,6 +69,9 @@ class EnhancedConversationService:
                 "sender": "user"
             }
             
+            # Log which service we're using
+            logger.info(f"Processing message with {'Strands' if self.use_strands else 'Agent Core'} service")
+            
             # Process with appropriate service
             if self.use_strands:
                 async for chunk in self._process_with_strands_streaming(

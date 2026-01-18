@@ -182,9 +182,8 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Run database migrations
-        working-directory: ./python-backend
         run: |
-          echo "🗄️ Running database migrations..."
+          echo "🗄️ Running database migrations via ECS task..."
 
           # Get database connection details from CloudFormation
           DB_ENDPOINT=$(aws cloudformation describe-stacks \
@@ -194,15 +193,43 @@ jobs:
 
           echo "Database endpoint: $DB_ENDPOINT"
 
-          # Get database credentials from Secrets Manager
-          # Find the secret by searching for the stack name pattern
+          # Get ECS cluster from CloudFormation
+          ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
+            --output text)
+
+          echo "Using ECS cluster: $ECS_CLUSTER"
+
+          # Get VPC and subnet information
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:aws:cloudformation:stack-name,Values=${{ env.STACK_NAME }}" \
+            --query 'Vpcs[0].VpcId' \
+            --output text)
+
+          PRIVATE_SUBNETS=$(aws ec2 describe-subnets \
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:aws-cdk:subnet-type,Values=Private" \
+            --query 'Subnets[].SubnetId' \
+            --output text | tr '\t' ',')
+
+          echo "VPC ID: $VPC_ID"
+          echo "Private subnets: $PRIVATE_SUBNETS"
+
+          # Get security group that allows database access
+          BACKEND_SECURITY_GROUP=$(aws ec2 describe-security-groups \
+            --filters "Name=vpc-id,Values=$VPC_ID" "Name=group-name,Values=*BackendService*" \
+            --query 'SecurityGroups[0].GroupId' \
+            --output text)
+
+          echo "Backend security group: $BACKEND_SECURITY_GROUP"
+
+          # Get database secret ARN
           DB_SECRET_ARN=$(aws secretsmanager list-secrets \
             --query 'SecretList[?contains(Name, `NoahInfrastructureStack`)].ARN' \
             --output text | head -1)
 
           if [ -z "$DB_SECRET_ARN" ]; then
             echo "Trying alternative secret discovery method..."
-            # Try to find any secret with the database identifier pattern
             DB_SECRET_ARN=$(aws secretsmanager list-secrets \
               --query 'SecretList[?contains(Name, `Noah`)].ARN' \
               --output text | head -1)
@@ -217,53 +244,113 @@ jobs:
 
           echo "Found database secret: $DB_SECRET_ARN"
 
-          # Get credentials
-          DB_CREDENTIALS=$(aws secretsmanager get-secret-value \
-            --secret-id "$DB_SECRET_ARN" \
-            --query 'SecretString' \
+          # Get ECR repository URI
+          ECR_URI=$(aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} --query 'repositories[0].repositoryUri' --output text)
+          MIGRATION_IMAGE="$ECR_URI:latest"
+
+          echo "Using migration image: $MIGRATION_IMAGE"
+
+          # Create task definition for migrations
+          TASK_DEFINITION_JSON=$(cat <<EOF
+          {
+            "family": "noah-migrations",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/ecsTaskExecutionRole",
+            "containerDefinitions": [
+              {
+                "name": "migration-container",
+                "image": "$MIGRATION_IMAGE",
+                "essential": true,
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/noah-migrations",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                },
+                "environment": [
+                  {
+                    "name": "DATABASE_HOST",
+                    "value": "$DB_ENDPOINT"
+                  },
+                  {
+                    "name": "DATABASE_PORT",
+                    "value": "5432"
+                  },
+                  {
+                    "name": "DATABASE_NAME",
+                    "value": "noah"
+                  },
+                  {
+                    "name": "DATABASE_USER",
+                    "value": "noah_db_admin"
+                  }
+                ],
+                "secrets": [
+                  {
+                    "name": "DATABASE_PASSWORD",
+                    "valueFrom": "$DB_SECRET_ARN:password::"
+                  }
+                ],
+                "command": ["uv", "run", "alembic", "upgrade", "head"]
+              }
+            ]
+          }
+          EOF
+          )
+
+          # Create CloudWatch log group if it doesn't exist
+          aws logs create-log-group --log-group-name "/ecs/noah-migrations" --region ${{ env.AWS_REGION }} || echo "Log group already exists"
+
+          # Register task definition
+          echo "📝 Registering migration task definition..."
+          TASK_DEF_ARN=$(echo "$TASK_DEFINITION_JSON" | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          echo "Task definition registered: $TASK_DEF_ARN"
+
+          # Run the migration task
+          echo "🚀 Running migration task..."
+          TASK_ARN=$(aws ecs run-task \
+            --cluster $ECS_CLUSTER \
+            --task-definition $TASK_DEF_ARN \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNETS],securityGroups=[$BACKEND_SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
             --output text)
 
-          DB_USERNAME=$(echo $DB_CREDENTIALS | jq -r '.username')
-          DB_PASSWORD=$(echo $DB_CREDENTIALS | jq -r '.password')
-          DB_NAME="noah"
+          echo "Migration task started: $TASK_ARN"
 
-          # Set environment variables for Alembic
-          export DATABASE_HOST="$DB_ENDPOINT"
-          export DATABASE_PORT="5432"
-          export DATABASE_NAME="$DB_NAME"
-          export DATABASE_USER="$DB_USERNAME"
-          export DATABASE_PASSWORD="$DB_PASSWORD"
-          export DATABASE_URL="postgresql://$DB_USERNAME:$DB_PASSWORD@$DB_ENDPOINT:5432/$DB_NAME"
+          # Wait for task to complete
+          echo "⏳ Waiting for migration task to complete..."
+          aws ecs wait tasks-stopped --cluster $ECS_CLUSTER --tasks $TASK_ARN
 
-          # Install dependencies
-          echo "📦 Installing Python dependencies..."
-          uv sync
+          # Check task exit code
+          TASK_STATUS=$(aws ecs describe-tasks \
+            --cluster $ECS_CLUSTER \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
 
-          # Test database connection
-          echo "🔍 Testing database connection..."
-          uv run python -c "
-          from src.database import engine
-          from sqlalchemy import text
-          try:
-              with engine.connect() as conn:
-                  conn.execute(text('SELECT 1'))
-              print('✅ Database connection successful')
-          except Exception as e:
-              print(f'❌ Database connection failed: {e}')
-              exit(1)
-          "
-
-          # Check current migration status
-          echo "📋 Checking current migration status..."
-          uv run alembic current || echo "No current migration found"
-
-          # Run migrations
-          echo "🚀 Running migrations..."
-          uv run alembic upgrade head
-
-          # Verify migration completion
-          echo "✅ Verifying migration completion..."
-          uv run alembic current
+          if [ "$TASK_STATUS" = "0" ]; then
+            echo "✅ Migration task completed successfully!"
+          else
+            echo "❌ Migration task failed with exit code: $TASK_STATUS"
+            
+            # Get logs for debugging
+            echo "📋 Migration task logs:"
+            TASK_ID=$(echo $TASK_ARN | cut -d'/' -f3)
+            aws logs get-log-events \
+              --log-group-name "/ecs/noah-migrations" \
+              --log-stream-name "ecs/migration-container/$TASK_ID" \
+              --query 'events[].message' \
+              --output text || echo "Could not retrieve logs"
+            
+            exit 1
+          fi
 
           echo "✅ Database migrations completed successfully!"
 
