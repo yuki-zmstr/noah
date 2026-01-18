@@ -263,22 +263,39 @@ jobs:
           echo "Using migration image: $MIGRATION_IMAGE"
 
           # Create a modified task definition for migrations
-          MIGRATION_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$MIGRATION_IMAGE" '
+          echo "📝 Creating migration task definition..."
+
+          # Save the original task definition to a file
+          echo "$TASK_DEFINITION" > /tmp/original-task-def.json
+
+          # Create the migration task definition using jq
+          jq --arg IMAGE "$MIGRATION_IMAGE" '
             .family = "noah-migrations" |
             .containerDefinitions[0].image = $IMAGE |
             .containerDefinitions[0].name = "migration-container" |
             .containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
-            .containerDefinitions[0].logConfiguration.options."awslogs-group" = "/ecs/noah-migrations" |
-            del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | 
-            del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)
-          ')
+            del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
+          ' /tmp/original-task-def.json > /tmp/migration-task-def.json
 
-          # Create CloudWatch log group if it doesn't exist
-          aws logs create-log-group --log-group-name "/ecs/noah-migrations" --region ${{ env.AWS_REGION }} || echo "Log group already exists"
+          # Verify the JSON is valid
+          if ! jq empty /tmp/migration-task-def.json; then
+            echo "❌ Generated task definition JSON is invalid"
+            echo "Original task definition:"
+            cat /tmp/original-task-def.json
+            echo "Generated migration task definition:"
+            cat /tmp/migration-task-def.json
+            exit 1
+          fi
+
+          echo "✅ Migration task definition created successfully"
+
+          # Show a preview of the migration task definition for debugging
+          echo "📋 Migration task definition preview:"
+          jq '.family, .containerDefinitions[0].name, .containerDefinitions[0].image, .containerDefinitions[0].command' /tmp/migration-task-def.json
 
           # Register the migration task definition
           echo "📝 Registering migration task definition..."
-          MIGRATION_TASK_DEF_ARN=$(echo "$MIGRATION_TASK_DEF" | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+          MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file:///tmp/migration-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
 
           echo "Migration task definition registered: $MIGRATION_TASK_DEF_ARN"
 
@@ -322,12 +339,39 @@ jobs:
             # Get logs for debugging
             echo "📋 Migration task logs:"
             TASK_ID=$(echo $TASK_ARN | cut -d'/' -f3)
-            aws logs get-log-events \
-              --log-group-name "/ecs/noah-migrations" \
-              --log-stream-name "ecs/migration-container/$TASK_ID" \
-              --start-time $(date -d '10 minutes ago' +%s)000 \
-              --query 'events[].message' \
-              --output text || echo "Could not retrieve logs"
+            
+            # Get the log group name from the task definition
+            LOG_GROUP=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-group"' /tmp/migration-task-def.json)
+            
+            # Try to get logs with different approaches
+            echo "Attempting to retrieve logs for task: $TASK_ID from log group: $LOG_GROUP"
+            
+            # First, list available log streams
+            echo "Available log streams:"
+            aws logs describe-log-streams \
+              --log-group-name "$LOG_GROUP" \
+              --query 'logStreams[].logStreamName' \
+              --output text || echo "Could not list log streams"
+            
+            # Try to get logs from the most recent stream
+            RECENT_STREAM=$(aws logs describe-log-streams \
+              --log-group-name "$LOG_GROUP" \
+              --order-by LastEventTime \
+              --descending \
+              --max-items 1 \
+              --query 'logStreams[0].logStreamName' \
+              --output text 2>/dev/null || echo "")
+            
+            if [ -n "$RECENT_STREAM" ] && [ "$RECENT_STREAM" != "None" ]; then
+              echo "Getting logs from stream: $RECENT_STREAM"
+              aws logs get-log-events \
+                --log-group-name "$LOG_GROUP" \
+                --log-stream-name "$RECENT_STREAM" \
+                --query 'events[].message' \
+                --output text || echo "Could not retrieve logs from recent stream"
+            else
+              echo "No log streams found or could not determine recent stream"
+            fi
             
             exit 1
           fi

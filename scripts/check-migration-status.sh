@@ -1,144 +1,130 @@
 #!/bin/bash
 
-# Check Database Migration Status
-# This script connects to the RDS database and checks the current migration status
+# Check Migration Status
+# This script checks the current migration status of the database
 
 set -e
 
-echo "🔍 Checking Database Migration Status..."
+echo "📋 Checking database migration status..."
 
 # Configuration
 AWS_REGION=${AWS_REGION:-"ap-northeast-1"}
 STACK_NAME="NoahInfrastructureStack"
+ECR_REPOSITORY="noah-backend"
 
-# Get database connection details from CloudFormation
-echo "📋 Getting database connection details..."
+# Allow override of image tag
+IMAGE_TAG=${IMAGE_TAG:-"latest"}
 
-DB_ENDPOINT=$(aws cloudformation describe-stacks \
+# Get ECS cluster and service information
+ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
   --stack-name $STACK_NAME \
-  --query 'Stacks[0].Outputs[?OutputKey==`DatabaseEndpoint`].OutputValue' \
-  --output text 2>/dev/null || echo "")
-
-if [[ -z "$DB_ENDPOINT" || "$DB_ENDPOINT" == "None" ]]; then
-  echo "❌ Database endpoint not found. Make sure infrastructure is deployed first."
-  exit 1
-fi
-
-# Get database credentials from Secrets Manager
-echo "🔐 Getting database credentials..."
-DB_SECRET_ARN=$(aws rds describe-db-instances \
-  --query 'DBInstances[?DBInstanceIdentifier==`noahinfrastructurestack-noahdatabase*`].MasterUserSecret.SecretArn' \
-  --output text 2>/dev/null || echo "")
-
-if [[ -z "$DB_SECRET_ARN" || "$DB_SECRET_ARN" == "None" ]]; then
-  echo "❌ Database secret not found. Trying alternative method..."
-  
-  # Try to get from CloudFormation resources
-  DB_SECRET_ARN=$(aws cloudformation describe-stack-resources \
-    --stack-name $STACK_NAME \
-    --query 'StackResources[?ResourceType==`AWS::SecretsManager::Secret`].PhysicalResourceId' \
-    --output text 2>/dev/null || echo "")
-fi
-
-if [[ -z "$DB_SECRET_ARN" || "$DB_SECRET_ARN" == "None" ]]; then
-  echo "❌ Could not find database credentials"
-  exit 1
-fi
-
-# Get credentials from Secrets Manager
-DB_CREDENTIALS=$(aws secretsmanager get-secret-value \
-  --secret-id "$DB_SECRET_ARN" \
-  --query 'SecretString' \
+  --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
   --output text)
 
-DB_USERNAME=$(echo $DB_CREDENTIALS | jq -r '.username')
-DB_PASSWORD=$(echo $DB_CREDENTIALS | jq -r '.password')
-DB_NAME="noah"
-
-echo "✅ Database connection details retrieved"
-echo "  Endpoint: $DB_ENDPOINT"
-echo "  Database: $DB_NAME"
-echo "  Username: $DB_USERNAME"
-
-# Check if we can connect via bastion host
-BASTION_INSTANCE_ID=$(aws cloudformation describe-stacks \
+ECS_SERVICE=$(aws cloudformation describe-stack-resources \
   --stack-name $STACK_NAME \
-  --query 'Stacks[0].Outputs[?OutputKey==`BastionHostInstanceId`].OutputValue' \
-  --output text 2>/dev/null || echo "")
+  --query 'StackResources[?ResourceType==`AWS::ECS::Service`].PhysicalResourceId' \
+  --output text)
 
-if [[ -n "$BASTION_INSTANCE_ID" && "$BASTION_INSTANCE_ID" != "None" ]]; then
-  echo "🔗 Using bastion host for database connection..."
-  echo "  Bastion Instance ID: $BASTION_INSTANCE_ID"
-  
-  # Create a temporary SQL script
-  TEMP_SQL=$(mktemp)
-  cat > $TEMP_SQL << EOF
--- Check if alembic_version table exists
-SELECT EXISTS (
-    SELECT FROM information_schema.tables 
-    WHERE table_schema = 'public' 
-    AND table_name = 'alembic_version'
-) as alembic_table_exists;
+echo "Using ECS cluster: $ECS_CLUSTER"
 
--- If alembic_version exists, show current version
-SELECT version_num as current_migration_version 
-FROM alembic_version 
-WHERE EXISTS (
-    SELECT FROM information_schema.tables 
-    WHERE table_schema = 'public' 
-    AND table_name = 'alembic_version'
-);
+# Get the current task definition from the service
+CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+  --cluster $ECS_CLUSTER \
+  --services $ECS_SERVICE \
+  --query 'services[0].taskDefinition' \
+  --output text)
 
--- Show all tables
-SELECT table_name 
-FROM information_schema.tables 
-WHERE table_schema = 'public' 
-ORDER BY table_name;
-EOF
+# Get the task definition details
+TASK_DEFINITION=$(aws ecs describe-task-definition \
+  --task-definition $CURRENT_TASK_DEF_ARN \
+  --query 'taskDefinition')
 
-  echo "📊 Executing database queries via bastion host..."
-  
-  # Execute SQL via SSM Session Manager
-  aws ssm send-command \
-    --instance-ids "$BASTION_INSTANCE_ID" \
-    --document-name "AWS-RunShellScript" \
-    --parameters "commands=[\"PGPASSWORD='$DB_PASSWORD' psql -h $DB_ENDPOINT -U $DB_USERNAME -d $DB_NAME -f /dev/stdin << 'EOF'
-$(cat $TEMP_SQL)
-EOF\"]" \
-    --query 'Command.CommandId' \
-    --output text > /tmp/command_id.txt
-  
-  COMMAND_ID=$(cat /tmp/command_id.txt)
-  
-  echo "⏳ Waiting for command to complete..."
-  sleep 5
-  
-  # Get command output
-  aws ssm get-command-invocation \
-    --command-id "$COMMAND_ID" \
-    --instance-id "$BASTION_INSTANCE_ID" \
-    --query 'StandardOutputContent' \
-    --output text
-  
-  # Clean up
-  rm $TEMP_SQL
-  rm /tmp/command_id.txt
-  
+# Get ECR repository URI and use the specified image
+ECR_URI=$(aws ecr describe-repositories --repository-names $ECR_REPOSITORY --query 'repositories[0].repositoryUri' --output text)
+MIGRATION_IMAGE="$ECR_URI:$IMAGE_TAG"
+
+echo "Using migration image: $MIGRATION_IMAGE"
+
+# Create a modified task definition for checking migration status
+echo "📝 Creating migration status check task definition..."
+
+# Save the original task definition to a file
+echo "$TASK_DEFINITION" > /tmp/original-task-def.json
+
+# Create the migration status check task definition using jq
+jq --arg IMAGE "$MIGRATION_IMAGE" '
+  .family = "noah-migration-status" |
+  .containerDefinitions[0].image = $IMAGE |
+  .containerDefinitions[0].name = "migration-status-container" |
+  .containerDefinitions[0].command = ["uv", "run", "alembic", "current", "-v"] |
+  del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
+' /tmp/original-task-def.json > /tmp/migration-status-task-def.json
+
+# Register the migration status task definition
+echo "📝 Registering migration status task definition..."
+MIGRATION_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file:///tmp/migration-status-task-def.json --query 'taskDefinition.taskDefinitionArn' --output text)
+
+echo "Migration status task definition registered: $MIGRATION_TASK_DEF_ARN"
+
+# Get network configuration from the existing service
+NETWORK_CONFIG=$(aws ecs describe-services \
+  --cluster $ECS_CLUSTER \
+  --services $ECS_SERVICE \
+  --query 'services[0].networkConfiguration' \
+  --output json)
+
+# Run the migration status task
+echo "🚀 Running migration status check task..."
+TASK_ARN=$(aws ecs run-task \
+  --cluster $ECS_CLUSTER \
+  --task-definition $MIGRATION_TASK_DEF_ARN \
+  --launch-type FARGATE \
+  --network-configuration "$NETWORK_CONFIG" \
+  --query 'tasks[0].taskArn' \
+  --output text)
+
+echo "Migration status task started: $TASK_ARN"
+
+# Wait for task to complete
+echo "⏳ Waiting for migration status task to complete..."
+aws ecs wait tasks-stopped --cluster $ECS_CLUSTER --tasks $TASK_ARN
+
+# Check task exit code
+TASK_STATUS=$(aws ecs describe-tasks \
+  --cluster $ECS_CLUSTER \
+  --tasks $TASK_ARN \
+  --query 'tasks[0].containers[0].exitCode' \
+  --output text)
+
+# Get the log group name from the task definition
+LOG_GROUP=$(jq -r '.containerDefinitions[0].logConfiguration.options."awslogs-group"' /tmp/migration-status-task-def.json)
+
+# Get logs
+echo "📋 Migration status output:"
+TASK_ID=$(echo $TASK_ARN | cut -d'/' -f3)
+
+# Wait a moment for logs to be available
+sleep 5
+
+# Get logs from the specific stream
+aws logs get-log-events \
+  --log-group-name "$LOG_GROUP" \
+  --log-stream-name "noah-backend/migration-status-container/$TASK_ID" \
+  --query 'events[].message' \
+  --output text || echo "Could not retrieve logs"
+
+if [ "$TASK_STATUS" = "0" ]; then
+  echo "✅ Migration status check completed successfully!"
 else
-  echo "❌ Bastion host not found. Cannot connect to database directly."
-  echo "💡 To check migration status manually:"
-  echo "  1. Connect to bastion host via SSM Session Manager"
-  echo "  2. Install PostgreSQL client: sudo yum install -y postgresql"
-  echo "  3. Connect to database: PGPASSWORD='$DB_PASSWORD' psql -h $DB_ENDPOINT -U $DB_USERNAME -d $DB_NAME"
-  echo "  4. Check migration status: SELECT * FROM alembic_version;"
+  echo "❌ Migration status check failed with exit code: $TASK_STATUS"
 fi
 
-echo ""
-echo "📝 Migration Status Summary:"
-echo "  ✅ Database endpoint accessible"
-echo "  ✅ Credentials retrieved"
-echo "  ℹ️  Check the output above for current migration version"
-echo ""
-echo "🔗 Useful commands:"
-echo "  View ECS service logs (for migration logs):"
-echo "    aws logs tail /ecs/noah-backend --follow --region $AWS_REGION"
+# Clean up the task definition
+echo "🧹 Cleaning up migration status task definition..."
+aws ecs deregister-task-definition --task-definition $MIGRATION_TASK_DEF_ARN > /dev/null
+
+# Clean up temp files
+rm -f /tmp/original-task-def.json /tmp/migration-status-task-def.json
+
+echo "✅ Migration status check completed!"
