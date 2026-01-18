@@ -269,17 +269,14 @@ jobs:
           echo "$TASK_DEFINITION" > /tmp/original-task-def.json
 
           # Create the migration task definition using jq
-          cat > /tmp/migration-jq-script.jq << 'EOF'
-def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
-
-.family = "noah-migrations" |
-.containerDefinitions[0].image = $IMAGE |
-.containerDefinitions[0].name = "migration-container" |
-.containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
-remove_fields
-EOF
-
-          jq --arg IMAGE "$MIGRATION_IMAGE" -f /tmp/migration-jq-script.jq /tmp/original-task-def.json > /tmp/migration-task-def.json
+          jq --arg IMAGE "$MIGRATION_IMAGE" '
+            def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
+            .family = "noah-migrations" |
+            .containerDefinitions[0].image = $IMAGE |
+            .containerDefinitions[0].name = "migration-container" |
+            .containerDefinitions[0].command = ["uv", "run", "alembic", "upgrade", "head"] |
+            remove_fields
+          ' /tmp/original-task-def.json > /tmp/migration-task-def.json
 
           # Verify the JSON is valid
           if ! jq empty /tmp/migration-task-def.json; then
@@ -381,7 +378,7 @@ EOF
             fi
             
             # Clean up temporary files
-            rm -f /tmp/original-task-def.json /tmp/migration-task-def.json /tmp/migration-jq-script.jq
+            rm -f /tmp/original-task-def.json /tmp/migration-task-def.json
             
             exit 1
           fi
@@ -389,7 +386,7 @@ EOF
           echo "✅ Database migrations completed successfully!"
 
           # Clean up temporary files
-          rm -f /tmp/original-task-def.json /tmp/migration-task-def.json /tmp/migration-jq-script.jq
+          rm -f /tmp/original-task-def.json /tmp/migration-task-def.json
 
       - name: Get ECS resources from CloudFormation
         id: ecs-resources
@@ -429,16 +426,12 @@ EOF
           # Save the task definition to a file
           echo "$TASK_DEFINITION" > /tmp/current-task-def.json
 
-          # Create jq script for updating the task definition
-          cat > /tmp/update-jq-script.jq << 'EOF'
-def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
-
-.containerDefinitions[0].image = $IMAGE |
-remove_fields
-EOF
-
           # Update image URI in task definition
-          jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" -f /tmp/update-jq-script.jq /tmp/current-task-def.json > /tmp/new-task-def.json
+          jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" '
+            def remove_fields: del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy);
+            .containerDefinitions[0].image = $IMAGE |
+            remove_fields
+          ' /tmp/current-task-def.json > /tmp/new-task-def.json
 
           # Verify the JSON is valid
           if ! jq empty /tmp/new-task-def.json; then
@@ -469,7 +462,7 @@ EOF
           echo "✅ ECS service deployment completed!"
 
           # Clean up temporary files
-          rm -f /tmp/current-task-def.json /tmp/new-task-def.json /tmp/update-jq-script.jq
+          rm -f /tmp/current-task-def.json /tmp/new-task-def.json
 
       - name: Verify deployment
         run: |
