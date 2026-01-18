@@ -13,7 +13,6 @@ A personalized reading agent system that learns and adapts to a user's reading i
 - **Interest_Score**: A numerical rating of how relevant content is to user preferences
 - **Content_Processor**: Component that analyzes and transforms text content across multiple languages
 - **Language_Pair**: A combination of source and target languages for content processing
-- **Purchase_Link**: Generated links to Amazon or other retailers for book purchasing
 - **Discovery_Mode**: A feature that suggests content outside the user's typical preferences
 
 ## Requirements
@@ -142,19 +141,7 @@ A personalized reading agent system that learns and adapts to a user's reading i
 7. THE Noah SHALL handle casual conversation about reading topics and provide engaging responses
 8. THE Noah SHALL ensure complete user data isolation with no memory leakage between different users
 
-### Requirement 11: Purchase Link Generation
-
-**User Story:** As a reader interested in a book, I want Noah to provide purchase links to Amazon and web search options, so that I can easily find and buy books that interest me.
-
-#### Acceptance Criteria
-
-1. WHEN a user expresses interest in purchasing a book, THE Noah SHALL generate Amazon purchase links for that book
-2. WHEN Amazon links are not available, THE Noah SHALL provide web search links to help users find purchase options
-3. THE Noah SHALL include purchase links automatically when recommending books that are available for purchase
-4. WHEN generating purchase links, THE Noah SHALL ensure links are properly formatted and functional
-5. THE Noah SHALL provide multiple purchase options when available (different formats, retailers)
-
-### Requirement 12: Discovery Mode ("I'm Feeling Lucky")
+### Requirement 11: Discovery Mode ("I'm Feeling Lucky")
 
 **User Story:** As a reader wanting to expand my horizons, I want an "I'm feeling lucky" option that suggests books outside my usual reading habits, so that I can discover new genres and authors I might not have considered.
 
@@ -167,7 +154,7 @@ A personalized reading agent system that learns and adapts to a user's reading i
 5. THE Noah SHALL track user responses to discovery recommendations to improve future discovery suggestions
 6. THE Noah SHALL balance discovery recommendations to avoid suggesting content that is completely incompatible with user interests
 
-### Requirement 13: Persistent Memory and User Privacy
+### Requirement 12: Persistent Memory and User Privacy
 
 **User Story:** As a user, I want Noah to remember our previous conversations and build understanding over time, while ensuring my data is completely private and isolated from other users.
 

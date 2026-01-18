@@ -9,7 +9,7 @@ from src.config import settings
 
 # Import all models to ensure they're registered
 from src.models.user_profile import UserProfile, ReadingBehavior, PreferenceSnapshot
-from src.models.content import ContentItem, PurchaseLink, DiscoveryRecommendation
+from src.models.content import ContentItem, DiscoveryRecommendation
 from src.models.conversation import ConversationSession, ConversationMessage, ConversationHistory
 
 

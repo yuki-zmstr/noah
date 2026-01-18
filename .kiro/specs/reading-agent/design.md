@@ -4,7 +4,7 @@
 
 Noah is an intelligent reading agent presented as a conversational chatbot that learns from user behavior to provide personalized content recommendations, reading level assessments, and content adaptations. The system operates across English and Japanese languages, maintaining separate proficiency models while providing a unified conversational user experience.
 
-Noah engages users through natural conversation, understanding requests for book recommendations, generating purchase links for interested titles, and offering a "discovery mode" that suggests content outside users' typical reading habits. The architecture follows a modular design with clear separation between conversational interface, content processing, user modeling, recommendation generation, and multilingual support.
+Noah engages users through natural conversation, understanding requests for book recommendations and offering a "discovery mode" that suggests content outside users' typical reading habits. The architecture follows a modular design with clear separation between conversational interface, content processing, user modeling, recommendation generation, and multilingual support.
 
 ## Architecture
 
@@ -19,7 +19,6 @@ graph TB
     CM --> NLU[Natural Language Understanding]
     CM --> NLG[Natural Language Generation]
     CM --> DM[Discovery Mode Engine]
-    CM --> PLG[Purchase Link Generator]
 
     RM --> UPE[User Profile Engine]
     RM --> CE[Content Engine]
@@ -44,14 +43,9 @@ graph TB
     NLP --> EN[English Processor]
     NLP --> JP[Japanese Processor]
 
-    PLG --> AMZ[Amazon API]
-    PLG --> WS[Web Search API]
-
     subgraph "External Services"
         EXT[Content Sources]
         ML[ML Models]
-        AMZ
-        WS
     end
 
     CP --> EXT
@@ -83,7 +77,6 @@ The Conversation Manager handles all natural language interactions with users, p
 - Generate conversational responses that feel natural and engaging
 - Maintain conversation context and session state
 - Coordinate with other managers to fulfill user requests
-- Handle discovery mode requests and purchase link generation
 
 **Key Features:**
 
@@ -191,24 +184,6 @@ Provides "I'm feeling lucky" functionality by deliberately suggesting content ou
 - Author diversity: Recommend authors from different backgrounds or writing styles
 - Topic bridging: Find content that connects user interests to new areas
 - Serendipitous matching: Use collaborative filtering to find unexpected connections
-
-### Purchase Link Generator
-
-Creates purchase links and search options when users express interest in acquiring books.
-
-**Core Responsibilities:**
-
-- Generate Amazon purchase links for books with proper affiliate handling
-- Create web search links when direct purchase links aren't available
-- Provide multiple format options (physical, digital, audiobook)
-- Ensure link functionality and proper formatting
-
-**Link Types:**
-
-- Direct Amazon product links with ISBN/ASIN lookup
-- Google/Bing search queries for book title and author
-- Alternative retailer suggestions when available
-- Library catalog search links for borrowing options
 
 ### Feedback Processor
 
@@ -335,7 +310,6 @@ class ConversationMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     intent = Column(JSON)  # UserIntent as JSON
     recommendations = Column(JSON)  # List of ContentRecommendation
-    purchase_links = Column(JSON)  # List of PurchaseLink
 
     session = relationship("ConversationSession", back_populates="messages")
 
@@ -356,24 +330,9 @@ class ConversationContext(BaseModel):
     preferred_language: str = "english"  # "english" or "japanese"
 ```
 
-### Purchase Link Model
+### Discovery Recommendation Model
 
 ```python
-class PurchaseLink(Base):
-    __tablename__ = "purchase_links"
-
-    link_id = Column(String, primary_key=True)
-    content_id = Column(String, ForeignKey("content_items.id"))
-    link_type = Column(String, nullable=False)  # "amazon", "web_search", "library", "alternative_retailer"
-    url = Column(String, nullable=False)
-    display_text = Column(String, nullable=False)
-    format = Column(String)  # "physical", "digital", "audiobook"
-    price = Column(String)
-    availability = Column(String, default="unknown")  # "available", "pre_order", "out_of_stock", "unknown"
-    generated_at = Column(DateTime, default=datetime.utcnow)
-
-    content_item = relationship("ContentItem")
-
 class DiscoveryRecommendation(Base):
     __tablename__ = "discovery_recommendations"
 
@@ -383,7 +342,7 @@ class DiscoveryRecommendation(Base):
     divergence_score = Column(Float, nullable=False)
     bridging_topics = Column(JSON)  # List of topics
     discovery_reason = Column(String, nullable=False)
-    user_response = Column(String)  # "interested", "not_interested", "purchased", "saved"
+    user_response = Column(String)  # "interested", "not_interested", "saved"
     response_timestamp = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -480,17 +439,12 @@ _For any_ user with sufficient historical data, when no explicit context is prov
 _For any_ user message in a conversational session, Noah should respond appropriately while maintaining conversation context and understanding user intent across different types of requests.
 **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5, 10.6**
 
-### Property 18: Purchase Link Generation
-
-_For any_ book or content item that users express interest in purchasing, Noah should generate functional purchase links (Amazon or web search) with proper formatting and availability information.
-**Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5**
-
-### Property 19: Discovery Mode Divergence
+### Property 18: Discovery Mode Divergence
 
 _For any_ user profile with established preferences, discovery mode should recommend content that deliberately diverges from typical preferences while remaining accessible at the user's reading level.
 **Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.5, 12.6**
 
-### Property 20: Persistent Memory and User Isolation
+### Property 19: Persistent Memory and User Isolation
 
 _For any_ user interaction, Noah should maintain persistent conversation history across sessions while ensuring complete data isolation between users with no information leakage.
 **Validates: Requirements 10.6, 13.1, 13.2, 13.3, 13.4, 13.5, 13.6**

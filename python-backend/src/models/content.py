@@ -26,31 +26,8 @@ class ContentItem(Base):
     # Relationships
     reading_behaviors = relationship(
         "ReadingBehavior", back_populates="content_item")
-    purchase_links = relationship(
-        "PurchaseLink", back_populates="content_item")
     discovery_recommendations = relationship(
         "DiscoveryRecommendation", back_populates="content_item")
-
-
-class PurchaseLink(Base):
-    """Purchase link model for book acquisition."""
-
-    __tablename__ = "purchase_links"
-
-    link_id = Column(String, primary_key=True)
-    content_id = Column(String, ForeignKey("content_items.id"))
-    # "amazon", "web_search", "library", "alternative_retailer"
-    link_type = Column(String, nullable=False)
-    url = Column(String, nullable=False)
-    display_text = Column(String, nullable=False)
-    format = Column(String)  # "physical", "digital", "audiobook"
-    price = Column(String)
-    # "available", "pre_order", "out_of_stock", "unknown"
-    availability = Column(String, default="unknown")
-    generated_at = Column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    content_item = relationship("ContentItem", back_populates="purchase_links")
 
 
 class DiscoveryRecommendation(Base):

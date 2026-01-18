@@ -19,7 +19,6 @@ For local development, you can start with minimal configuration:
 
 3. **Optional for enhanced features:**
    - AWS credentials for Bedrock Agent
-   - Amazon Product API for purchase links
    - Google Search API for web search links
 
 ## Environment Variables Breakdown
@@ -125,30 +124,6 @@ BEDROCK_KNOWLEDGE_BASE_ID=your-kb-id
 - You can leave these empty initially
 - The system will work without Bedrock (with limited AI features)
 
-### 🛒 Amazon Product API (for Purchase Links)
-
-```bash
-AMAZON_PRODUCT_API_KEY=your-api-key
-AMAZON_ASSOCIATE_TAG=your-associate-tag
-```
-
-**How to get Amazon Product API access:**
-
-1. **Join Amazon Associates Program:**
-   - Go to [associates.amazon.com](https://associates.amazon.com)
-   - Create account and get approved
-   - Note your Associate Tag (e.g., `yoursite-20`)
-
-2. **Get Product Advertising API Access:**
-   - Go to [webservices.amazon.com](https://webservices.amazon.com/paapi5/documentation/)
-   - Request API access (requires active Associate account)
-   - Get your Access Key and Secret Key
-
-**For Development:**
-
-- You can leave these empty
-- Purchase links will fall back to web search
-
 ### 🔍 Google Search API (for Web Search Links)
 
 ```bash
@@ -246,7 +221,6 @@ In `frontend/.env`:
 VITE_API_BASE_URL=http://localhost:8000/api
 VITE_ENABLE_DISCOVERY_MODE=true
 VITE_ENABLE_MULTILINGUAL=true
-VITE_ENABLE_PURCHASE_LINKS=true
 VITE_DEFAULT_LANGUAGE=english
 VITE_MAX_MESSAGE_LENGTH=2000
 VITE_TYPING_INDICATOR_DELAY=1000
@@ -367,5 +341,4 @@ This minimal setup will allow you to:
 - ✅ Store user conversations
 - ✅ Basic content processing
 - ❌ AI-powered responses (needs Bedrock)
-- ❌ Purchase links (needs Amazon API)
 - ❌ Web search (needs Google API)

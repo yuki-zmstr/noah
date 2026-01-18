@@ -22,7 +22,6 @@ class ConversationMessageCreate(BaseModel):
     content: str
     intent: Optional[Dict] = None
     recommendations: Optional[List[Dict]] = None
-    purchase_links: Optional[List[Dict]] = None
 
 
 class ConversationMessageResponse(BaseModel):
@@ -34,7 +33,6 @@ class ConversationMessageResponse(BaseModel):
     timestamp: datetime
     intent: Optional[Dict]
     recommendations: Optional[List[Dict]]
-    purchase_links: Optional[List[Dict]]
 
     class Config:
         from_attributes = True

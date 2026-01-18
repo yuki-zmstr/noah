@@ -58,34 +58,6 @@ class ContentItemResponse(BaseModel):
         populate_by_name = True
 
 
-class PurchaseLinkCreate(BaseModel):
-    """Schema for creating purchase links."""
-    link_id: str
-    content_id: str
-    link_type: str  # "amazon", "web_search", "library", "alternative_retailer"
-    url: str
-    display_text: str
-    format: Optional[str] = None  # "physical", "digital", "audiobook"
-    price: Optional[str] = None
-    availability: str = "unknown"
-
-
-class PurchaseLinkResponse(BaseModel):
-    """Schema for purchase link response."""
-    link_id: str
-    content_id: str
-    link_type: str
-    url: str
-    display_text: str
-    format: Optional[str]
-    price: Optional[str]
-    availability: str
-    generated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class SavedContentRequest(BaseModel):
     """Schema for saving content for a user."""
     content_id: str

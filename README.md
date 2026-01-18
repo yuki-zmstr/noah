@@ -15,7 +15,6 @@ A personalized reading agent system that learns and adapts to user reading inter
 - Multilingual support (English/Japanese)
 - Personalized book recommendations
 - Content adaptation based on reading level
-- Purchase link generation
 - Discovery mode for exploring new genres
 - Persistent conversation memory
 

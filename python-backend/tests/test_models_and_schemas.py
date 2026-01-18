@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base
 from src.models import (
     UserProfile, ReadingBehavior, PreferenceSnapshot,
-    ContentItem, PurchaseLink, DiscoveryRecommendation,
+    ContentItem, DiscoveryRecommendation,
     ConversationSession, ConversationMessage, ConversationHistory
 )
 from src.schemas import (
@@ -244,19 +244,19 @@ def test_pydantic_schema_validation():
     assert content_create.metadata.author == "Schema Author"
 
 
-def test_purchase_link_and_discovery_models(db_session):
-    """Test PurchaseLink and DiscoveryRecommendation models."""
+def test_discovery_models(db_session):
+    """Test DiscoveryRecommendation model."""
     # Create content and user profile
     content = ContentItem(
-        id="content_purchase_test",
-        title="Purchasable Book",
+        id="content_discovery_test",
+        title="Discovery Book",
         content="Great book content",
         language="english",
         content_metadata={}
     )
 
     profile = UserProfile(
-        user_id="test_user_purchase",
+        user_id="test_user_discovery",
         preferences={},
         reading_levels={}
     )
@@ -264,41 +264,24 @@ def test_purchase_link_and_discovery_models(db_session):
     db_session.add(content)
     db_session.add(profile)
 
-    # Create purchase link
-    purchase_link = PurchaseLink(
-        link_id="link_123",
-        content_id="content_purchase_test",
-        link_type="amazon",
-        url="https://amazon.com/book/123",
-        display_text="Buy on Amazon",
-        format="physical",
-        price="$15.99",
-        availability="available"
-    )
-
     # Create discovery recommendation
     discovery = DiscoveryRecommendation(
-        content_id="content_purchase_test",
-        user_id="test_user_purchase",
+        content_id="content_discovery_test",
+        user_id="test_user_discovery",
         divergence_score=0.7,
         bridging_topics=["adventure", "mystery"],
         discovery_reason="Genre exploration"
     )
 
-    db_session.add(purchase_link)
     db_session.add(discovery)
     db_session.commit()
 
     # Verify creation and relationships
-    retrieved_link = db_session.query(PurchaseLink).first()
     retrieved_discovery = db_session.query(DiscoveryRecommendation).first()
 
-    assert retrieved_link.link_type == "amazon"
-    assert retrieved_link.content_item.title == "Purchasable Book"
-
     assert retrieved_discovery.divergence_score == 0.7
-    assert retrieved_discovery.content_item.title == "Purchasable Book"
-    assert retrieved_discovery.user_profile.user_id == "test_user_purchase"
+    assert retrieved_discovery.content_item.title == "Discovery Book"
+    assert retrieved_discovery.user_profile.user_id == "test_user_discovery"
 
 
 if __name__ == "__main__":

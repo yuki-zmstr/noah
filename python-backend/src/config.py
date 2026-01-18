@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # OpenAI API
     openai_api_key: str = ""
 
+    # Anthropic API
+    anthropic_api_key: str = ""
+
+    # Strands Agents Configuration
+    strands_enabled: bool = True
+    strands_agent_model: str = "gpt-4o-mini"
+    strands_temperature: float = 0.7
+    strands_max_tokens: int = 1000
+    strands_streaming_enabled: bool = True
+
     # Amazon Product API
     amazon_access_key: str = ""
     amazon_secret_key: str = ""

@@ -321,8 +321,7 @@ class TestCoreSystemsIntegration:
             session_id, "Where can I buy this book?", mock_db
         )
 
-        assert response3["noah_response"]["type"] == "purchase_links"
-        assert "purchase_links" in response3["noah_response"]["metadata"]
+        assert response3["noah_response"]["type"] == "text"
 
         # Verify all interactions were stored
         assert mock_db.add.call_count >= 6  # 3 user messages + 3 noah responses

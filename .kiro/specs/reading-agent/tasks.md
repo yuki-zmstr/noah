@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation plan creates Noah, a conversational reading agent using Vue.js for the frontend chatbot interface, Python FastAPI for the backend API with SQLAlchemy for database management, and AWS Agent Core for agent orchestration and NLU capabilities. The system will provide personalized book recommendations, lightweight content analysis, multilingual support (English/Japanese), purchase link generation, and discovery mode functionality.
+This implementation plan creates Noah, a conversational reading agent using Vue.js for the frontend chatbot interface, Python FastAPI for the backend API with SQLAlchemy for database management, and AWS Agent Core for agent orchestration and NLU capabilities. The system will provide personalized book recommendations, lightweight content analysis, multilingual support (English/Japanese), and discovery mode functionality.
 
 **ARCHITECTURE CHANGES:** Content adaptation features have been removed to create a lighter, more deployable system. The focus is now on content curation and recommendation rather than content modification. OpenAI's embedding API replaces heavy local ML models for better performance and smaller Docker images.
 
@@ -73,7 +73,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Validates: Requirements 1.1, 5.1**
 
   - [x] 3.3 Implement SQLAlchemy models and FastAPI schemas with AWS Agent Core integration
-    - Create SQLAlchemy models for UserProfile, ContentItem, ConversationMessage, PurchaseLink
+    - Create SQLAlchemy models for UserProfile, ContentItem, ConversationMessage
     - Add Pydantic schemas for API request/response validation
     - Configure database connections and session management with FastAPI
     - Integrate AWS Agent Core for agent orchestration and state management
@@ -83,7 +83,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
   - [x] 4.1 Create Vue.js chat component with message history
     - Build responsive chat interface with message bubbles and typing indicators
     - Implement real-time messaging with WebSocket connection
-    - Add support for rich content display (book recommendations, purchase links)
+    - Add support for rich content display (book recommendations)
     - _Requirements: 10.1, 10.2, 10.4_
 
   - [x] 4.2 Implement natural language understanding with AWS Agent Core and FastAPI
@@ -99,15 +99,15 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 
 ## Phase 3: Enhanced AI Capabilities
 
-- [ ] 5. Replace hardcoded responses with dynamic AI generation
-  - [ ] 5.1 Implement proper AI response generation
+- [-] 5. Replace hardcoded responses with dynamic AI generation
+  - [x] 5.1 Implement proper AI response generation
     - Replace fallback responses with OpenAI/Anthropic API integration
     - Create dynamic response templates based on user context and intent
     - Implement conversation memory and context awareness
     - Add personality and tone consistency for Noah character
     - _Requirements: 10.3, 10.5, 10.6_
 
-  - [ ] 5.2 Enhance intent recognition and entity extraction
+  - [-] 5.2 Enhance intent recognition and entity extraction
     - Improve intent classification beyond basic keyword matching
     - Add sophisticated entity extraction for books, authors, genres
     - Implement context-aware conversation flow management
@@ -201,99 +201,80 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Add feedback collection through chat interface interactions
     - _Requirements: 3.1, 3.2, 3.3, 12.1, 12.2, 7.1, 7.2_
 
-- [ ] 11. Complete purchase link generation system
-  - [ ] 11.1 Finish Amazon API integration
-    - Complete Amazon Product Advertising API setup and testing
-    - Implement robust ISBN/ASIN resolution for accurate product matching
-    - Add affiliate link generation with proper tracking and error handling
-    - Test with real book data and handle API rate limits
-    - _Requirements: 11.1, 11.3, 11.4_
-
-  - [ ] 11.2 Implement web search link generator
-    - Build Google/Bing search query generation for books not found on Amazon
-    - Add alternative retailer suggestions (Barnes & Noble, local bookstores)
-    - Implement library catalog search integration for borrowing options
-    - Create fallback mechanisms when purchase links are unavailable
-    - _Requirements: 11.2, 11.5_
-
-  - [ ]\* 11.3 Write property test for purchase link generation
-    - **Property 18: Purchase Link Generation**
-    - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5**
-
-- [x] 12. Content storage and retrieval system (completed)
-  - [x] 12.1 Build content storage with metadata
+- [x] 11. Content storage and retrieval system (completed)
+  - [x] 11.1 Build content storage with metadata
     - Create content ingestion pipeline with automatic metadata extraction
     - Implement vector similarity search for content recommendations
     - Add saved content management with user-specific metadata
     - _Requirements: 6.1, 6.2, 6.4_
 
-  - [x] 12.2 Create reading progress tracking
+  - [x] 11.2 Create reading progress tracking
     - Build reading session tracking with behavioral metrics
     - Implement adaptive difficulty adjustment based on user performance
     - Add progressive complexity management for skill development
     - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-  - [ ]\* 12.3 Write property test for content storage
+  - [ ]\* 11.3 Write property test for content storage
     - **Property 10: Content Storage and Retrieval Consistency**
     - **Validates: Requirements 6.1, 6.2, 6.4**
 
-- [x] 13. Build preference transparency and control features
-  - [x] 13.1 Complete preference dashboard in Vue.js
+- [x] 12. Build preference transparency and control features
+  - [x] 12.1 Complete preference dashboard in Vue.js
     - Build user interface for viewing learned preferences and explanations
     - Implement preference editing and override functionality
     - Add recommendation explanation display with reasoning
     - Connect to backend preference transparency service
     - _Requirements: 8.1, 8.2, 8.3, 8.5_
 
-  - [x] 13.2 Implement immediate preference updates
+  - [x] 12.2 Implement immediate preference updates
     - Create real-time preference modification system
     - Build recommendation refresh mechanism for preference changes
     - Add preference change impact visualization
     - Test preference updates through both UI and chat interface
     - _Requirements: 8.4_
 
-  - [ ]\* 13.3 Write property test for preference transparency
+  - [ ]\* 12.3 Write property test for preference transparency
     - **Property 12: Preference Transparency and Control**
     - **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 8.5**
 
 ## Phase 6: Advanced Features and Optimization
 
-- [ ] 14. Implement performance optimization and monitoring
-  - [ ] 14.1 Add caching and performance optimization
+- [ ] 13. Implement performance optimization and monitoring
+  - [ ] 13.1 Add caching and performance optimization
     - Implement Redis caching for frequent recommendations and content analysis
     - Optimize database queries and add appropriate indexes
     - Add content delivery network for static assets
     - Monitor and optimize vector search performance
     - _Requirements: All system requirements_
 
-  - [ ] 14.2 Set up comprehensive monitoring and logging
+  - [ ] 13.2 Set up comprehensive monitoring and logging
     - Configure CloudWatch for application and infrastructure monitoring
     - Set up custom metrics for chat interactions and user engagement
     - Add error tracking and alerting for production issues
     - Implement performance monitoring and optimization alerts
     - _Requirements: All system requirements_
 
-  - [ ] 14.3 Set up CI/CD pipeline
+  - [ ] 13.3 Set up CI/CD pipeline
     - Create GitHub Actions for automated testing and deployment
     - Set up staging and production environments
     - Add automated rollback mechanisms
     - Implement blue-green deployment for zero-downtime updates
     - _Requirements: All system requirements_
 
-- [ ]\* 15. Integrate Strands Agents framework for enhanced agentic capabilities
-  - [-] 15.1 Install and configure strands-agents packages
+- [ ]\* 14. Integrate Strands Agents framework for enhanced agentic capabilities
+  - [x] 14.1 Install and configure strands-agents packages
     - Install strands-agents and strands-agents-tools packages via pip
     - Configure strands framework integration with existing FastAPI backend
     - Set up agent orchestration using strands for improved conversation management
     - _Requirements: 10.3, 10.5, 13.1, 13.2_
 
-  - [ ] 15.2 Enhance conversational agent with strands capabilities
+  - [ ] 14.2 Enhance conversational agent with strands capabilities
     - Migrate existing AWS Agent Core functionality to strands framework
     - Implement multi-agent workflows for complex recommendation scenarios
     - Add tool integration for content processing and recommendation generation
     - _Requirements: 10.1, 10.2, 10.6, 3.1, 3.2_
 
-  - [ ] 15.3 Implement Strands streaming functionality for real-time responses
+  - [ ] 14.3 Implement Strands streaming functionality for real-time responses
     - Replace current WebSocket text chunking with Strands agent.stream_async() method
     - Implement convert_event() function to handle Bedrock API streaming events
     - Add support for streaming text chunks and tool usage notifications via WebSocket
@@ -301,22 +282,22 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Test real-time AI response generation with proper tool visibility
     - _Requirements: 10.1, 10.2, 10.4, 10.5_
 
-  - [ ]\* 15.4 Write property test for strands agent integration
+  - [ ]\* 14.4 Write property test for strands agent integration
     - **Property 20: Strands Agent Workflow Consistency**
     - **Validates: Requirements 10.3, 10.5, 13.1, 13.2**
 
-- [ ] 16. Integration testing and final validation
-  - [ ]\* 16.1 Write comprehensive integration tests
+- [ ] 15. Integration testing and final validation
+  - [ ]\* 15.1 Write comprehensive integration tests
     - Test complete user journey from chat interaction to book recommendation
     - Verify multilingual content processing and cultural context preservation
-    - Test discovery mode and purchase link generation workflows
+    - Test discovery mode workflows
     - Validate user data isolation and privacy requirements
     - _Requirements: All system requirements_
 
-  - [ ] 16.2 Final system validation and optimization
+  - [ ] 15.2 Final system validation and optimization
     - Ensure all tests pass and system meets performance requirements
     - Verify multilingual support works correctly for English and Japanese
-    - Test conversational interface, discovery mode, and purchase link generation
+    - Test conversational interface and discovery mode
     - Validate preference transparency and user control features
     - Conduct end-to-end testing with real users
     - _Requirements: All system requirements_
@@ -332,4 +313,4 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 - **ARCHITECTURE SIMPLIFIED:** Content adaptation engine removed to reduce Docker image size from ~4GB to ~1GB
 - **DEPENDENCIES OPTIMIZED:** Replaced torch, transformers, sentence-transformers, spaCy with lightweight OpenAI API integration
 - **FOCUS SHIFTED:** From content modification to content curation and intelligent recommendation
-- Most core functionality is implemented - remaining work focuses on integration, completion of purchase links, preference UI, and deployment
+- Most core functionality is implemented - remaining work focuses on integration, preference UI, and deployment

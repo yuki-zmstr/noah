@@ -11,7 +11,7 @@ from src.api.routes import api_router
 # Import all models to ensure they're registered with SQLAlchemy
 from src.models import (
     UserProfile, ReadingBehavior, PreferenceSnapshot,
-    ContentItem, PurchaseLink, DiscoveryRecommendation,
+    ContentItem, DiscoveryRecommendation,
     ConversationSession, ConversationMessage, ConversationHistory
 )
 
@@ -83,7 +83,7 @@ def create_app() -> FastAPI:
             # Log registered models
             registered_models = [
                 UserProfile.__name__, ReadingBehavior.__name__, PreferenceSnapshot.__name__,
-                ContentItem.__name__, PurchaseLink.__name__, DiscoveryRecommendation.__name__,
+                ContentItem.__name__, DiscoveryRecommendation.__name__,
                 ConversationSession.__name__, ConversationMessage.__name__, ConversationHistory.__name__
             ]
             logger.info(f"Registered models: {', '.join(registered_models)}")
@@ -91,6 +91,35 @@ def create_app() -> FastAPI:
             logger.error(f"Error creating database tables: {e}")
             logger.warning("Application starting without database connection. DB operations will fail until connection is established.")
             # Don't raise - allow app to start for health checks
+
+        # Initialize and log Strands agents configuration
+        try:
+            from src.services.enhanced_conversation_service import EnhancedConversationService
+            from src.services.strands_config import strands_config, validate_strands_config
+            
+            # Initialize conversation service to check Strands availability
+            conversation_service = EnhancedConversationService()
+            service_info = conversation_service.get_service_info()
+            
+            logger.info(f"Conversation service initialized: {service_info['service_type']}")
+            
+            if service_info.get("strands_available"):
+                logger.info("Strands agents framework successfully integrated")
+                logger.info(f"Agent model: {strands_config.agent_model}")
+                logger.info(f"Tools enabled: {service_info.get('agent_info', {}).get('tools', [])}")
+                
+                # Validate configuration
+                validation = validate_strands_config(strands_config)
+                if validation["valid"]:
+                    logger.info("Strands configuration validation passed")
+                else:
+                    logger.warning(f"Strands configuration issues: {validation['errors']}")
+            else:
+                logger.info("Using AWS Agent Core fallback for conversation processing")
+                
+        except Exception as e:
+            logger.error(f"Error initializing Strands agents: {e}")
+            logger.info("Falling back to AWS Agent Core for conversation processing")
 
         logger.info("Noah Reading Agent startup completed")
 
@@ -114,9 +143,15 @@ def create_app() -> FastAPI:
             "cors_origins": settings.cors_origins,
             "features": {
                 "aws_agent_core": True,
+                "strands_agents": settings.strands_enabled,
                 "multilingual_support": True,
                 "discovery_mode": True,
-                "purchase_links": True
+                "streaming_responses": True
+            },
+            "agent_config": {
+                "strands_enabled": settings.strands_enabled,
+                "model": settings.strands_agent_model,
+                "streaming": settings.strands_streaming_enabled
             }
         }
 

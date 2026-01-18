@@ -72,7 +72,7 @@ class AgentCoreService:
         context: Dict,
         recommendations: Optional[List[Dict]] = None
     ) -> str:
-        """Generate conversational response using AWS Agent Core."""
+        """Generate conversational response using AWS Agent Core or AI fallback."""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -92,8 +92,20 @@ class AgentCoreService:
                 response.raise_for_status()
                 return response.json().get("response", "I'm here to help with your reading!")
         except Exception as e:
-            # Fallback to basic response generation
-            return self._fallback_response_generation(user_message, intent)
+            # Enhanced fallback using AI response service if available
+            try:
+                from src.services.ai_response_service import AIResponseService
+                ai_service = AIResponseService()
+                return await ai_service.generate_response(
+                    user_message=user_message,
+                    intent=intent,
+                    context=context,
+                    recommendations=recommendations
+                )
+            except Exception as ai_error:
+                logger.error(f"AI service fallback failed: {ai_error}")
+                # Final fallback to basic response generation
+                return self._fallback_response_generation(user_message, intent)
 
     async def update_conversation_context(
         self,
@@ -219,7 +231,6 @@ class AgentCoreService:
 
         responses = {
             "book_recommendation": "I'd be happy to recommend some books for you! What genres or topics interest you?",
-            "purchase_inquiry": "I can help you find where to buy that book. Let me generate some purchase links for you.",
             "discovery_mode": "Let's explore something new! I'll find some books outside your usual preferences.",
             "general_conversation": "I'm Noah, your reading companion. How can I help you discover your next great read?"
         }

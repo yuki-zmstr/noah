@@ -1,6 +1,6 @@
 import { usePreferencesStore } from '@/stores/preferences'
 import { useChatStore } from '@/stores/chat'
-import { useWebSocket } from '@/composables/useWebSocket'
+import { awsConfig } from '@/config/aws-config'
 import type { PreferenceOverride, PreferenceTransparency } from '@/types/preferences'
 
 export interface PreferenceUpdateImpact {
@@ -16,23 +16,6 @@ export interface PreferenceUpdateImpact {
 export class PreferenceUpdateService {
   private preferencesStore = usePreferencesStore()
   private chatStore = useChatStore()
-  private webSocket = useWebSocket()
-
-  constructor() {
-    this.setupWebSocketListeners()
-  }
-
-  private setupWebSocketListeners() {
-    // Listen for preference update confirmations from backend
-    this.webSocket.onPreferenceUpdate((data) => {
-      this.handlePreferenceUpdateNotification(data)
-    })
-
-    // Listen for recommendation refreshes
-    this.webSocket.onRecommendationRefresh((data) => {
-      this.handleRecommendationRefresh(data)
-    })
-  }
 
   async updatePreferenceWithImpact(
     userId: string, 
@@ -45,14 +28,21 @@ export class PreferenceUpdateService {
       // Update preference via API
       const result = await this.preferencesStore.overridePreference(userId, override)
       
-      // Send real-time update via WebSocket for immediate recommendation refresh
-      this.webSocket.sendPreferenceUpdate(userId, {
+      // Send HTTP notification for immediate recommendation refresh
+      const updateResult = await this.sendPreferenceUpdate(userId, {
         override,
-        impact: impactAnalysis
+        impact: impactAnalysis,
+        type: override.type,
+        timestamp: new Date().toISOString()
       })
 
       // Add impact message to chat
       this.addImpactMessageToChat(override, impactAnalysis)
+
+      // Handle any new recommendations from the update
+      if (updateResult.new_recommendations && updateResult.new_recommendations.length > 0) {
+        this.handleRecommendationRefresh(updateResult.new_recommendations)
+      }
 
       return impactAnalysis
     } catch (error) {
@@ -82,21 +72,56 @@ export class PreferenceUpdateService {
 
       await this.preferencesStore.updateReadingLevels(userId, updatedLevels)
 
-      // Send real-time update
-      this.webSocket.sendPreferenceUpdate(userId, {
+      // Send HTTP notification
+      const updateResult = await this.sendPreferenceUpdate(userId, {
         type: 'reading_level',
         language,
         oldLevel,
         newLevel,
-        impact
+        impact,
+        timestamp: new Date().toISOString()
       })
 
       // Add impact message to chat
       this.addReadingLevelImpactToChat(language, oldLevel, newLevel, impact)
 
+      // Handle any new recommendations from the update
+      if (updateResult.new_recommendations && updateResult.new_recommendations.length > 0) {
+        this.handleRecommendationRefresh(updateResult.new_recommendations)
+      }
+
       return impact
     } catch (error) {
       console.error('Failed to update reading level with impact:', error)
+      throw error
+    }
+  }
+
+  private async sendPreferenceUpdate(userId: string, preferenceData: any): Promise<any> {
+    try {
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/chat/preferences/update?user_id=${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(preferenceData)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      // Update local preferences store with real-time data
+      if (result.updated_preferences) {
+        this.preferencesStore.transparencyData = result.updated_preferences
+        this.preferencesStore.lastUpdated = new Date(result.timestamp)
+      }
+
+      return result
+    } catch (error) {
+      console.error('Error sending preference update:', error)
       throw error
     }
   }
@@ -237,21 +262,13 @@ export class PreferenceUpdateService {
     })
   }
 
-  private handlePreferenceUpdateNotification(data: { user_id: string, updated_preferences: any, timestamp: string }) {
-    // Update local preferences store with real-time data
-    if (data.updated_preferences) {
-      this.preferencesStore.transparencyData = data.updated_preferences
-      this.preferencesStore.lastUpdated = new Date(data.timestamp)
-    }
-  }
-
-  private handleRecommendationRefresh(data: { user_id: string, new_recommendations: any[], timestamp: string }) {
+  private handleRecommendationRefresh(recommendations: any[]) {
     // Handle refreshed recommendations
-    if (data.new_recommendations && data.new_recommendations.length > 0) {
-      const message = `Based on your updated preferences, I've found ${data.new_recommendations.length} new recommendations that might interest you!`
+    if (recommendations && recommendations.length > 0) {
+      const message = `Based on your updated preferences, I've found ${recommendations.length} new recommendations that might interest you!`
       
       this.chatStore.addNoahMessage(message, 'recommendation', {
-        recommendations: data.new_recommendations
+        recommendations: recommendations
       })
     }
   }
@@ -260,20 +277,46 @@ export class PreferenceUpdateService {
   async refreshRecommendations(userId: string) {
     try {
       // Call API to get fresh recommendations based on updated preferences
-      const response = await fetch(`/api/recommendations/${userId}?refresh=true`)
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/recommendations/${userId}?refresh=true`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
       if (!response.ok) throw new Error('Failed to refresh recommendations')
       
-      const recommendations = await response.json()
+      const result = await response.json()
+      const recommendations = result.recommendations || []
       
-      // Send via WebSocket for real-time delivery
-      this.webSocket.sendPreferenceUpdate(userId, {
-        type: 'recommendation_refresh',
-        recommendations
-      })
+      // Add recommendations to chat
+      if (recommendations.length > 0) {
+        this.handleRecommendationRefresh(recommendations)
+      }
       
       return recommendations
     } catch (error) {
       console.error('Failed to refresh recommendations:', error)
+      throw error
+    }
+  }
+
+  // Method to get updated preference transparency data
+  async getPreferenceTransparency(userId: string): Promise<PreferenceTransparency | null> {
+    try {
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/preferences/${userId}/transparency`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      if (!response.ok) throw new Error('Failed to get preference transparency')
+      
+      const result = await response.json()
+      return result.transparency_data || null
+    } catch (error) {
+      console.error('Failed to get preference transparency:', error)
       throw error
     }
   }

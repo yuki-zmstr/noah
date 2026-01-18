@@ -167,8 +167,7 @@ async def create_message(
         sender=message.sender,
         content=message.content,
         intent=message.intent,
-        recommendations=message.recommendations,
-        purchase_links=message.purchase_links
+        recommendations=message.recommendations
     )
 
     db.add(db_message)

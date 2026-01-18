@@ -63,7 +63,7 @@ class ConversationService:
                 content=noah_response["content"],
                 intent=intent,
                 recommendations=noah_response.get("recommendations"),
-                purchase_links=noah_response.get("purchase_links"),
+                
                 db=db
             )
 
@@ -95,8 +95,7 @@ class ConversationService:
                     "sender": "noah",
                     "type": noah_response.get("type", "text"),
                     "metadata": {
-                        "recommendations": noah_response.get("recommendations"),
-                        "purchase_links": noah_response.get("purchase_links")
+                        "recommendations": noah_response.get("recommendations")
                     }
                 },
                 "intent": intent,
@@ -184,7 +183,7 @@ class ConversationService:
                 content=noah_response["content"],
                 intent=intent,
                 recommendations=noah_response.get("recommendations"),
-                purchase_links=noah_response.get("purchase_links"),
+                
                 db=db
             )
 
@@ -398,63 +397,6 @@ class ConversationService:
             "recommendations": discovery_recommendation
         }
 
-    async def _handle_and_stream_purchase_inquiry(
-        self,
-        user_message: str,
-        entities: Dict,
-        session: ConversationSession,
-        connection_id: str,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Handle purchase inquiry requests with streaming."""
-        await manager.send_typing_indicator(session.session_id, False)
-
-        # Mock purchase links
-        purchase_links = [
-            {
-                "id": "amazon_link",
-                "type": "amazon",
-                "url": "https://amazon.com/example",
-                "displayText": "Buy on Amazon",
-                "format": "physical",
-                "price": "$14.99",
-                "availability": "available"
-            },
-            {
-                "id": "search_link",
-                "type": "web_search",
-                "url": "https://google.com/search?q=book+title",
-                "displayText": "Search for more options",
-                "availability": "unknown"
-            }
-        ]
-
-        response_content = await self.agent_core.generate_response(
-            user_message,
-            {"intent": "purchase_inquiry"},
-            session.context or {},
-            []
-        )
-
-        # Stream the text response
-        await self._stream_text_response(response_content, connection_id)
-
-        # Send purchase links
-        await manager.send_personal_message(
-            json.dumps({
-                "type": "noah_purchase_links",
-                "purchase_links": purchase_links,
-                "timestamp": datetime.utcnow().isoformat()
-            }),
-            connection_id
-        )
-
-        return {
-            "content": response_content,
-            "type": "purchase_links",
-            "purchase_links": purchase_links
-        }
-
     async def _handle_and_stream_feedback(
         self,
         user_message: str,
@@ -583,7 +525,6 @@ class ConversationService:
         content: str,
         intent: Optional[Dict] = None,
         recommendations: Optional[List[Dict]] = None,
-        purchase_links: Optional[List[Dict]] = None,
         db: Session = None
     ) -> ConversationMessage:
         """Store a message in the database."""
@@ -595,8 +536,7 @@ class ConversationService:
             sender=sender,
             content=content,
             intent=intent,
-            recommendations=recommendations,
-            purchase_links=purchase_links
+            recommendations=recommendations
         )
 
         db.add(message)
@@ -622,10 +562,6 @@ class ConversationService:
             )
         elif intent_type == "discovery_mode":
             return await self._handle_discovery_mode(
-                user_message, entities, session, db
-            )
-        elif intent_type == "purchase_inquiry":
-            return await self._handle_purchase_inquiry(
                 user_message, entities, session, db
             )
         else:
@@ -714,47 +650,6 @@ class ConversationService:
             "recommendations": discovery_recommendation
         }
 
-    async def _handle_purchase_inquiry(
-        self,
-        user_message: str,
-        entities: Dict,
-        session: ConversationSession,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Handle purchase inquiry requests."""
-        # Mock purchase links
-        purchase_links = [
-            {
-                "id": "amazon_link",
-                "type": "amazon",
-                "url": "https://amazon.com/example",
-                "displayText": "Buy on Amazon",
-                "format": "physical",
-                "price": "$14.99",
-                "availability": "available"
-            },
-            {
-                "id": "search_link",
-                "type": "web_search",
-                "url": "https://google.com/search?q=book+title",
-                "displayText": "Search for more options",
-                "availability": "unknown"
-            }
-        ]
-
-        response_content = await self.agent_core.generate_response(
-            user_message,
-            {"intent": "purchase_inquiry"},
-            session.context or {},
-            []
-        )
-
-        return {
-            "content": response_content,
-            "type": "purchase_links",
-            "purchase_links": purchase_links
-        }
-
     async def _handle_general_conversation(
         self,
         user_message: str,
@@ -794,10 +689,9 @@ class ConversationService:
                 "sender": msg.sender,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
-                "type": "recommendation" if msg.recommendations else "purchase_links" if msg.purchase_links else "text",
+                "type": "recommendation" if msg.recommendations else "text",
                 "metadata": {
-                    "recommendations": msg.recommendations,
-                    "purchase_links": msg.purchase_links
+                    "recommendations": msg.recommendations
                 }
             }
             for msg in messages

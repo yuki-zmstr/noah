@@ -161,7 +161,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
 
   const overridePreference = async (userId: string, override: PreferenceOverride): Promise<PreferenceUpdateImpact[]> => {
     try {
-      // Use the preference update service for real-time updates with impact analysis
+      // Use the HTTP preference update service for real-time updates with impact analysis
       return await preferenceUpdateService.updatePreferenceWithImpact(userId, override)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to override preference'

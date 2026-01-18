@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, desc
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.models.content import ContentItem, PurchaseLink
+from src.models.content import ContentItem
 from src.models.user_profile import UserProfile, ReadingBehavior
 from src.schemas.content import (
     ContentItemCreate, ContentItemResponse, ContentAnalysis,

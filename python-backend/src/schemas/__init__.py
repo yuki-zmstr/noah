@@ -12,9 +12,7 @@ from .content import (
     ContentItemCreate,
     ContentItemResponse,
     ContentMetadata,
-    ContentAnalysis,
-    PurchaseLinkCreate,
-    PurchaseLinkResponse
+    ContentAnalysis
 )
 from .conversation import (
     ConversationSessionCreate,
@@ -38,8 +36,6 @@ __all__ = [
     "ContentItemResponse",
     "ContentMetadata",
     "ContentAnalysis",
-    "PurchaseLinkCreate",
-    "PurchaseLinkResponse",
 
     # Conversation schemas
     "ConversationSessionCreate",

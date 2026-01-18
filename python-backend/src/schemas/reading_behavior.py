@@ -104,7 +104,6 @@ class RecommendationResponse(BaseModel):
     interest_score: float
     reading_level_match: float
     recommendation_reason: str
-    purchase_links: Optional[List[Dict]] = None
 
 
 class SessionProgressUpdate(BaseModel):

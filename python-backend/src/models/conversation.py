@@ -37,7 +37,6 @@ class ConversationMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     intent = Column(JSON)  # UserIntent as JSON
     recommendations = Column(JSON)  # List of ContentRecommendation
-    purchase_links = Column(JSON)  # List of PurchaseLink
 
     # Relationships
     session = relationship("ConversationSession", back_populates="messages")

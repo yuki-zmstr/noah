@@ -23,7 +23,6 @@ class StrandsConfig(BaseModel):
     # Tool configuration
     enable_recommendations: bool = Field(default=True, description="Enable recommendation tool")
     enable_discovery: bool = Field(default=True, description="Enable discovery mode tool")
-    enable_purchase_links: bool = Field(default=True, description="Enable purchase link generation")
     enable_feedback: bool = Field(default=True, description="Enable feedback processing")
     enable_content_analysis: bool = Field(default=True, description="Enable content analysis")
     
@@ -102,7 +101,6 @@ def validate_strands_config(config: StrandsConfig) -> Dict[str, Any]:
         "tools_enabled": {
             "recommendations": config.enable_recommendations,
             "discovery": config.enable_discovery,
-            "purchase_links": config.enable_purchase_links,
             "feedback": config.enable_feedback,
             "content_analysis": config.enable_content_analysis
         },

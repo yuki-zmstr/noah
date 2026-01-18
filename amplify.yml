@@ -9,7 +9,6 @@ environment:
     VITE_API_BASE_URL: http://NoahIn-NoahB-oKNHtTs5iPix-286806897.ap-northeast-1.elb.amazonaws.com/api
     VITE_ENABLE_DISCOVERY_MODE: true
     VITE_ENABLE_MULTILINGUAL: true
-    VITE_ENABLE_PURCHASE_LINKS: true
     VITE_DEFAULT_LANGUAGE: english
     VITE_MAX_MESSAGE_LENGTH: 2000
     VITE_TYPING_INDICATOR_DELAY: 1000

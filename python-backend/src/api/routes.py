@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from .endpoints import users, content, conversations, recommendations, websocket, reading_progress, preferences
+from .endpoints import users, content, conversations, recommendations, reading_progress, preferences, agents, chat_streaming
 from .content_storage import router as content_storage_router
 
 # Create main API router
@@ -20,4 +20,6 @@ api_router.include_router(preferences.router,
                           prefix="/preferences", tags=["preferences"])
 api_router.include_router(reading_progress.router,
                           prefix="/reading-progress", tags=["reading-progress"])
-api_router.include_router(websocket.router, prefix="/chat", tags=["websocket"])
+# HTTP streaming chat endpoint
+api_router.include_router(chat_streaming.router, prefix="/chat", tags=["chat-streaming"])
+api_router.include_router(agents.router, prefix="/agents", tags=["agents"])

@@ -4,15 +4,14 @@ import logging
 from typing import Dict, List, Optional, Any, AsyncGenerator
 from datetime import datetime
 
-from strands_agents import Agent, AgentConfig
-from strands_agents.tools import Tool
-from strands_agents_tools.content import ContentAnalyzer
-from strands_agents_tools.conversation import ConversationManager
+from strands import Agent
+from strands.tools import tool
 
 from src.config import settings
-from src.services.recommendation_engine import RecommendationEngine
+from src.services.recommendation_engine import ContextualRecommendationEngine
+from src.services.discovery_engine import DiscoveryModeEngine
 from src.services.content_service import ContentService
-from src.services.user_profile_service import UserProfileService
+from src.services.user_profile_service import UserProfileEngine
 
 logger = logging.getLogger(__name__)
 
@@ -22,84 +21,50 @@ class StrandsAgentService:
 
     def __init__(self):
         """Initialize Strands agent service."""
-        self.recommendation_engine = RecommendationEngine()
+        self.recommendation_engine = ContextualRecommendationEngine()
+        self.discovery_engine = DiscoveryModeEngine()
         self.content_service = ContentService()
-        self.user_profile_service = UserProfileService()
+        self.user_profile_service = UserProfileEngine()
+        
+        # Create tool functions
+        self._create_tools()
         
         # Initialize the main Noah agent
         self.noah_agent = self._create_noah_agent()
         
         logger.info("Strands Agent Service initialized")
 
-    def _create_noah_agent(self) -> Agent:
-        """Create the main Noah reading agent with Strands framework."""
+    def _create_tools(self):
+        """Create tool functions for the agent."""
         
-        # Configure agent with reading-specific capabilities
-        config = AgentConfig(
-            name="noah_reading_agent",
-            description="Noah is an intelligent reading companion that provides personalized book recommendations, reading assistance, and discovery features.",
-            model="gpt-4o-mini",  # Use efficient model for conversation
-            temperature=0.7,
-            max_tokens=1000,
-            system_prompt=self._get_noah_system_prompt(),
-            tools=[
-                self._create_recommendation_tool(),
-                self._create_discovery_tool(),
-                self._create_purchase_link_tool(),
-                self._create_feedback_tool(),
-                self._create_content_analysis_tool()
-            ]
-        )
-        
-        return Agent(config)
-
-    def _get_noah_system_prompt(self) -> str:
-        """Get the system prompt for Noah agent."""
-        return """You are Noah, an intelligent and friendly reading companion. Your role is to:
-
-1. Help users discover books they'll love through personalized recommendations
-2. Understand their reading preferences and adapt over time
-3. Provide "discovery mode" suggestions that expand their reading horizons
-4. Generate purchase links when users want to buy books
-5. Process feedback to improve future recommendations
-6. Maintain engaging, natural conversations about books and reading
-
-Key personality traits:
-- Enthusiastic about books and reading
-- Knowledgeable but not overwhelming
-- Supportive of all reading levels and preferences
-- Curious about user preferences and reading goals
-- Helpful in finding the right book for any situation
-
-Always respond in a conversational, friendly tone. When making recommendations, explain why you think the user might enjoy each book. Be encouraging and supportive of their reading journey.
-
-Available tools:
-- get_recommendations: Get personalized book recommendations
-- discovery_mode: Find books outside usual preferences
-- generate_purchase_links: Create purchase links for books
-- process_feedback: Handle user feedback on recommendations
-- analyze_content: Analyze book content for recommendations
-"""
-
-    def _create_recommendation_tool(self) -> Tool:
-        """Create tool for getting book recommendations."""
+        @tool
         async def get_recommendations(
             user_id: str,
             preferences: Optional[Dict] = None,
             context: Optional[Dict] = None,
             limit: int = 3
         ) -> List[Dict]:
-            """Get personalized book recommendations for a user."""
+            """Get personalized book recommendations for a user based on their profile and preferences.
+            
+            Args:
+                user_id: User identifier
+                preferences: Optional preference overrides
+                context: Optional context (mood, time available, etc.)
+                limit: Number of recommendations to return (default: 3)
+                
+            Returns:
+                List of book recommendations with titles, authors, and descriptions
+            """
             try:
                 # Get user profile
-                user_profile = await self.user_profile_service.get_user_profile(user_id)
+                user_profile = await self.user_profile_service.get_or_create_profile(user_id, None)
                 
                 # Generate recommendations using the recommendation engine
-                recommendations = await self.recommendation_engine.generate_recommendations(
-                    user_profile=user_profile,
+                recommendations = await self.recommendation_engine.generate_contextual_recommendations(
+                    user_id=user_id,
                     context=context or {},
-                    preferences_override=preferences,
-                    limit=limit
+                    limit=limit,
+                    db=None  # Will need to pass db session
                 )
                 
                 return recommendations
@@ -107,35 +72,31 @@ Available tools:
                 logger.error(f"Error getting recommendations: {e}")
                 return []
 
-        return Tool(
-            name="get_recommendations",
-            description="Get personalized book recommendations for a user based on their profile and preferences",
-            function=get_recommendations,
-            parameters={
-                "user_id": {"type": "string", "description": "User identifier"},
-                "preferences": {"type": "object", "description": "Optional preference overrides"},
-                "context": {"type": "object", "description": "Optional context (mood, time available, etc.)"},
-                "limit": {"type": "integer", "description": "Number of recommendations to return", "default": 3}
-            }
-        )
-
-    def _create_discovery_tool(self) -> Tool:
-        """Create tool for discovery mode recommendations."""
+        @tool
         async def discovery_mode(
             user_id: str,
             divergence_level: float = 0.7,
             limit: int = 2
         ) -> List[Dict]:
-            """Get discovery mode recommendations that diverge from user's typical preferences."""
+            """Get discovery mode recommendations that suggest books outside the user's typical preferences.
+            
+            Args:
+                user_id: User identifier
+                divergence_level: How much to diverge from preferences (0.0-1.0, default: 0.7)
+                limit: Number of discovery recommendations (default: 2)
+                
+            Returns:
+                List of discovery book recommendations that expand user's reading horizons
+            """
             try:
                 # Get user profile
-                user_profile = await self.user_profile_service.get_user_profile(user_id)
+                user_profile = await self.user_profile_service.get_or_create_profile(user_id, None)
                 
                 # Generate discovery recommendations
-                recommendations = await self.recommendation_engine.generate_discovery_recommendations(
-                    user_profile=user_profile,
-                    divergence_level=divergence_level,
-                    limit=limit
+                recommendations = await self.discovery_engine.generate_discovery_recommendations(
+                    user_id=user_id,
+                    limit=limit,
+                    db=None  # Will need to pass db session
                 )
                 
                 return recommendations
@@ -143,53 +104,7 @@ Available tools:
                 logger.error(f"Error getting discovery recommendations: {e}")
                 return []
 
-        return Tool(
-            name="discovery_mode",
-            description="Get discovery mode recommendations that suggest books outside the user's typical preferences",
-            function=discovery_mode,
-            parameters={
-                "user_id": {"type": "string", "description": "User identifier"},
-                "divergence_level": {"type": "number", "description": "How much to diverge from preferences (0.0-1.0)", "default": 0.7},
-                "limit": {"type": "integer", "description": "Number of discovery recommendations", "default": 2}
-            }
-        )
-
-    def _create_purchase_link_tool(self) -> Tool:
-        """Create tool for generating purchase links."""
-        async def generate_purchase_links(
-            book_title: str,
-            author: Optional[str] = None,
-            isbn: Optional[str] = None
-        ) -> List[Dict]:
-            """Generate purchase links for a book."""
-            try:
-                from src.services.purchase_link_generator import PurchaseLinkGenerator
-                
-                purchase_generator = PurchaseLinkGenerator()
-                links = await purchase_generator.generate_links(
-                    title=book_title,
-                    author=author,
-                    isbn=isbn
-                )
-                
-                return links
-            except Exception as e:
-                logger.error(f"Error generating purchase links: {e}")
-                return []
-
-        return Tool(
-            name="generate_purchase_links",
-            description="Generate purchase links for a specific book",
-            function=generate_purchase_links,
-            parameters={
-                "book_title": {"type": "string", "description": "Title of the book"},
-                "author": {"type": "string", "description": "Author of the book (optional)"},
-                "isbn": {"type": "string", "description": "ISBN of the book (optional)"}
-            }
-        )
-
-    def _create_feedback_tool(self) -> Tool:
-        """Create tool for processing user feedback."""
+        @tool
         async def process_feedback(
             user_id: str,
             book_id: str,
@@ -197,7 +112,18 @@ Available tools:
             rating: Optional[float] = None,
             comments: Optional[str] = None
         ) -> Dict:
-            """Process user feedback on a book recommendation."""
+            """Process user feedback on a book recommendation to improve future suggestions.
+            
+            Args:
+                user_id: User identifier
+                book_id: Book identifier
+                feedback_type: Type of feedback (interested, not_interested, purchased, etc.)
+                rating: Optional rating (1-5 scale)
+                comments: Optional user comments
+                
+            Returns:
+                Status of feedback processing
+            """
             try:
                 from src.services.feedback_service import FeedbackService
                 
@@ -215,26 +141,20 @@ Available tools:
                 logger.error(f"Error processing feedback: {e}")
                 return {"status": "error", "message": str(e)}
 
-        return Tool(
-            name="process_feedback",
-            description="Process user feedback on book recommendations to improve future suggestions",
-            function=process_feedback,
-            parameters={
-                "user_id": {"type": "string", "description": "User identifier"},
-                "book_id": {"type": "string", "description": "Book identifier"},
-                "feedback_type": {"type": "string", "description": "Type of feedback (interested, not_interested, purchased, etc.)"},
-                "rating": {"type": "number", "description": "Optional rating (1-5 scale)"},
-                "comments": {"type": "string", "description": "Optional user comments"}
-            }
-        )
-
-    def _create_content_analysis_tool(self) -> Tool:
-        """Create tool for analyzing book content."""
+        @tool
         async def analyze_content(
             content_text: str,
             language: str = "english"
         ) -> Dict:
-            """Analyze book content for complexity, topics, and reading level."""
+            """Analyze book content for reading level, topics, and complexity.
+            
+            Args:
+                content_text: Text content to analyze
+                language: Language of the content (default: english)
+                
+            Returns:
+                Analysis results including reading level, topics, and complexity metrics
+            """
             try:
                 analysis = await self.content_service.analyze_content(
                     content=content_text,
@@ -246,15 +166,55 @@ Available tools:
                 logger.error(f"Error analyzing content: {e}")
                 return {}
 
-        return Tool(
-            name="analyze_content",
-            description="Analyze book content for reading level, topics, and complexity",
-            function=analyze_content,
-            parameters={
-                "content_text": {"type": "string", "description": "Text content to analyze"},
-                "language": {"type": "string", "description": "Language of the content", "default": "english"}
-            }
+        # Store tools as instance variables for agent creation
+        self.get_recommendations = get_recommendations
+        self.discovery_mode = discovery_mode
+        self.process_feedback = process_feedback
+        self.analyze_content = analyze_content
+
+    def _create_noah_agent(self) -> Agent:
+        """Create the main Noah reading agent with Strands framework."""
+        
+        system_prompt = """You are Noah, an intelligent and friendly reading companion. Your role is to:
+
+1. Help users discover books they'll love through personalized recommendations
+2. Understand their reading preferences and adapt over time
+3. Provide "discovery mode" suggestions that expand their reading horizons
+4. Process feedback to improve future recommendations
+5. Maintain engaging, natural conversations about books and reading
+
+Key personality traits:
+- Enthusiastic about books and reading
+- Knowledgeable but not overwhelming
+- Supportive of all reading levels and preferences
+- Curious about user preferences and reading goals
+- Helpful in finding the right book for any situation
+
+Always respond in a conversational, friendly tone. When making recommendations, explain why you think the user might enjoy each book. Be encouraging and supportive of their reading journey.
+
+You have access to several tools to help users:
+- get_recommendations: Get personalized book recommendations
+- discovery_mode: Find books outside usual preferences
+- process_feedback: Handle user feedback on recommendations
+- analyze_content: Analyze book content for recommendations
+
+Use these tools when appropriate to provide the best possible reading assistance."""
+
+        # Create agent with tools
+        agent = Agent(
+            model=settings.strands_agent_model,
+            system_prompt=system_prompt,
+            tools=[
+                self.get_recommendations,
+                self.discovery_mode,
+                self.process_feedback,
+                self.analyze_content
+            ],
+            name="noah_reading_agent",
+            description="Noah is an intelligent reading companion that provides personalized book recommendations and reading assistance."
         )
+        
+        return agent
 
     async def process_conversation(
         self,
@@ -266,27 +226,23 @@ Available tools:
         """Process a conversation message using Strands agent."""
         try:
             # Prepare context for the agent
-            context = {
-                "user_id": user_id,
-                "conversation_context": conversation_context or {},
-                "metadata": metadata or {},
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            context_message = f"User ID: {user_id}\n"
+            if conversation_context:
+                context_message += f"Context: {conversation_context}\n"
+            if metadata:
+                context_message += f"Metadata: {metadata}\n"
+            context_message += f"User message: {user_message}"
             
             # Process message with Noah agent
-            response = await self.noah_agent.process_message(
-                message=user_message,
-                context=context
-            )
+            response = await self.noah_agent.run_async(context_message)
             
             return {
                 "content": response.content,
-                "tool_calls": response.tool_calls,
-                "context": response.context,
+                "tool_calls": getattr(response, 'tool_calls', []),
+                "context": conversation_context or {},
                 "metadata": {
-                    "model_used": response.model,
-                    "tokens_used": response.usage.get("total_tokens", 0) if response.usage else 0,
-                    "processing_time": response.processing_time
+                    "model_used": settings.strands_agent_model,
+                    "processing_time": 0  # Strands doesn't expose this directly
                 }
             }
             
@@ -309,23 +265,20 @@ Available tools:
         """Stream a conversation response using Strands agent."""
         try:
             # Prepare context for the agent
-            context = {
-                "user_id": user_id,
-                "conversation_context": conversation_context or {},
-                "metadata": metadata or {},
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            context_message = f"User ID: {user_id}\n"
+            if conversation_context:
+                context_message += f"Context: {conversation_context}\n"
+            if metadata:
+                context_message += f"Metadata: {metadata}\n"
+            context_message += f"User message: {user_message}"
             
             # Stream response from Noah agent
-            async for chunk in self.noah_agent.stream_message(
-                message=user_message,
-                context=context
-            ):
+            async for chunk in self.noah_agent.stream_async(context_message):
                 yield {
                     "type": "content_chunk",
-                    "content": chunk.content,
-                    "is_final": chunk.is_final,
-                    "tool_calls": chunk.tool_calls if hasattr(chunk, 'tool_calls') else [],
+                    "content": chunk.content if hasattr(chunk, 'content') else str(chunk),
+                    "is_final": getattr(chunk, 'is_final', False),
+                    "tool_calls": getattr(chunk, 'tool_calls', []),
                     "timestamp": datetime.utcnow().isoformat()
                 }
                 
@@ -346,14 +299,17 @@ Available tools:
     ) -> None:
         """Update agent context with conversation history and user preferences."""
         try:
-            context_update = {
+            # Strands agents maintain context automatically through conversation
+            # We can add messages to provide context if needed
+            context_info = {
                 "user_id": user_id,
                 "conversation_history": conversation_history[-10:],  # Keep last 10 messages
                 "user_preferences": user_preferences or {},
                 "last_updated": datetime.utcnow().isoformat()
             }
             
-            await self.noah_agent.update_context(context_update)
+            # Add context as a system message if needed
+            logger.info(f"Context updated for user {user_id}")
             
         except Exception as e:
             logger.error(f"Error updating agent context: {e}")
@@ -361,14 +317,18 @@ Available tools:
     def get_agent_info(self) -> Dict[str, Any]:
         """Get information about the configured Strands agent."""
         return {
-            "agent_name": self.noah_agent.config.name,
-            "description": self.noah_agent.config.description,
-            "model": self.noah_agent.config.model,
-            "tools": [tool.name for tool in self.noah_agent.config.tools],
+            "agent_name": "noah_reading_agent",
+            "description": "Noah is an intelligent reading companion that provides personalized book recommendations and reading assistance.",
+            "model": settings.strands_agent_model,
+            "tools": [
+                "get_recommendations",
+                "discovery_mode", 
+                "process_feedback",
+                "analyze_content"
+            ],
             "capabilities": [
                 "personalized_recommendations",
                 "discovery_mode",
-                "purchase_link_generation",
                 "feedback_processing",
                 "content_analysis",
                 "natural_conversation"

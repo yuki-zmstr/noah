@@ -148,7 +148,6 @@ Key environment variables for the backend (see `.env.example`):
 - `REDIS_URL` - Redis connection string
 - `OPENSEARCH_ENDPOINT` - OpenSearch endpoint
 - `BEDROCK_AGENT_ID` - AWS Bedrock Agent ID
-- `AMAZON_PRODUCT_API_KEY` - Amazon Product API key
 - `JWT_SECRET` - JWT signing secret
 
 ### Frontend Environment Variables
@@ -263,7 +262,6 @@ cd python-backend && python -m build
 - **Content Processor**: Analyzes content for complexity, topics, and cultural context
 - **Recommendation Generator**: Creates personalized content suggestions
 - **Discovery Mode Engine**: Provides serendipitous recommendations outside user preferences
-- **Purchase Link Generator**: Creates purchase links for recommended books
 
 ## API Documentation
 
