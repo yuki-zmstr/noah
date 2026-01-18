@@ -200,8 +200,8 @@ export class NoahInfrastructureStack extends cdk.Stack {
           OPENSEARCH_ENDPOINT: 'disabled-for-initial-deployment',
           
           // CORS configuration
-          ALLOWED_ORIGINS: 'http://localhost:5173,https://localhost:5173,https://master.d7603dy3bkh3g.amplifyapp.com,https://d33z9owyqf2ey4.cloudfront.net',
-          CORS_ALLOW_CREDENTIALS: 'true',
+          ALLOWED_ORIGINS: 'http://localhost:3000,http://localhost:5173,https://master.d7603dy3bkh3g.amplifyapp.com',
+          CORS_ALLOW_CREDENTIALS: 'false',
           
           // Proxy configuration for ALB/CloudFront
           TRUSTED_HOSTS: '*',

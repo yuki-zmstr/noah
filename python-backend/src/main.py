@@ -83,26 +83,22 @@ def create_app() -> FastAPI:
     # Add CORS middleware
     # Use specific origins when credentials are needed for security
     cors_origins = settings.cors_origins_list if settings.cors_origins_list else ["*"]
-    
+
     # Only allow credentials if we have specific origins (not "*") and it's explicitly enabled
     allow_credentials = (
-        settings.cors_allow_credentials and 
-        len(cors_origins) > 0 and 
+        settings.cors_allow_credentials and
+        len(cors_origins) > 0 and
         "*" not in cors_origins
     )
-    
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://master.d7603dy3bkh3g.amplifyapp.com",
-        ],
-        allow_credentials=False,
+        allow_origins=cors_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     logger.info(f"CORS configured with origins: {cors_origins}, credentials: {allow_credentials}")
 
     # Remove the old debugging middleware since MonitoringMiddleware handles this

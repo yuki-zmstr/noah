@@ -54,7 +54,7 @@ class Settings(BaseSettings):
 
     # CORS - Handle as comma-separated string, then split
     allowed_origins: str = "http://localhost:3000,http://localhost:5173,https://master.d7603dy3bkh3g.amplifyapp.com"
-    cors_allow_credentials: bool = True
+    cors_allow_credentials: bool = False
 
     # Proxy Configuration
     trusted_hosts: str = "*"  # For ALB/CloudFront - restrict in production if needed
