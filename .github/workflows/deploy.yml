@@ -649,24 +649,3 @@ jobs:
           else
             echo "No previous revision available for rollback"
           fi
-
-      - name: Notify rollback
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = `## 🔄 Automatic Backend Rollback Initiated
-
-            **Environment:** ${{ needs.setup.outputs.environment }}
-            **Reason:** Backend deployment verification failed
-            **Commit:** ${{ github.sha }}
-
-            The system has automatically initiated a backend rollback to the previous stable version.
-            Frontend deployment will continue via Amplify if needed.
-            `;
-
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
