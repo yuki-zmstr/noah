@@ -3,7 +3,8 @@
     "target": "ES2020",
     "module": "commonjs",
     "lib": [
-      "es2020"
+      "es2020",
+      "dom"
     ],
     "declaration": true,
     "strict": true,
@@ -19,10 +20,11 @@
     "inlineSources": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
-    "typeRoots": [
-      "./node_modules/@types"
-    ],
-    "types": ["node"]
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
   },
   "exclude": [
     "node_modules",

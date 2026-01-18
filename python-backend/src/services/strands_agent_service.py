@@ -268,38 +268,26 @@ Use these tools when appropriate to provide the best possible reading assistance
     def _convert_event(self, event) -> dict | None:
         """Convert Strands events to frontend-compatible JSON format."""
         try:
-            # Log raw event for debugging
-            logger.debug(f"Processing event: {type(event)} - {str(event)[:200]}")
-            
             # Handle different event formats
             if isinstance(event, dict):
                 # Direct dictionary event
                 inner_event = event.get('event')
                 if inner_event:
-                    result = self._process_inner_event(inner_event)
-                    if result:
-                        logger.debug(f"Converted dict event to: {result}")
-                    return result
+                    return self._process_inner_event(inner_event)
                 
                 # Check if this is already a processed event
                 if event.get('type') == 'text' and 'data' in event:
-                    logger.debug(f"Already processed event: {event}")
                     return event
                     
             elif hasattr(event, 'get'):
                 # Object with get method
                 inner_event = event.get('event')
                 if inner_event:
-                    result = self._process_inner_event(inner_event)
-                    if result:
-                        logger.debug(f"Converted object event to: {result}")
-                    return result
+                    return self._process_inner_event(inner_event)
             
             # Handle raw string content (fallback)
             elif isinstance(event, str) and event.strip():
-                result = {'type': 'text', 'data': event}
-                logger.debug(f"Converted string event to: {result}")
-                return result
+                return {'type': 'text', 'data': event}
             
             return None
         except Exception as e:
@@ -398,33 +386,16 @@ Use these tools when appropriate to provide the best possible reading assistance
                                     if not content or not content.strip():
                                         continue
                                     
-                                    # Check if this content is already part of what we've sent
-                                    if content in accumulated_content:
-                                        logger.debug(f"Skipping duplicate content: {content}")
-                                        continue
-                                    
                                     # Check for rapid duplicates (same content within threshold)
                                     if (current_time - last_chunk_time) < duplicate_threshold:
                                         if content == getattr(self, '_last_content', ''):
                                             logger.debug(f"Skipping rapid duplicate: {content}")
                                             continue
                                     
-                                    # Additional check: if this content is a substring of what we already sent
-                                    if accumulated_content and content in accumulated_content:
-                                        logger.debug(f"Skipping substring duplicate: {content}")
-                                        continue
-                                    
-                                    # Check if accumulated content already ends with this content
-                                    if accumulated_content.endswith(content):
-                                        logger.debug(f"Skipping duplicate ending: {content}")
-                                        continue
-                                    
                                     # Update tracking
                                     accumulated_content += content
                                     self._last_content = content
                                     last_chunk_time = current_time
-                                    
-                                    logger.debug(f"Sending chunk: '{content}', accumulated length: {len(accumulated_content)}")
                                     
                                     yield {
                                         "type": "content_chunk",

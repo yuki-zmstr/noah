@@ -101,7 +101,20 @@ jobs:
 
       - name: Install CDK dependencies
         working-directory: ./infrastructure
-        run: npm ci
+        run: |
+          echo "📦 Installing CDK dependencies..."
+
+          # Clean install to ensure fresh dependencies
+          rm -rf node_modules package-lock.json
+          npm install
+
+          # Verify critical dependencies are installed
+          echo "✅ Verifying dependencies..."
+          ls -la node_modules/@types/node/ || echo "❌ @types/node not found"
+          ls -la node_modules/typescript/ || echo "❌ typescript not found"
+          ls -la node_modules/aws-cdk-lib/ || echo "❌ aws-cdk-lib not found"
+
+          echo "✅ Dependencies installed successfully"
 
       - name: Build TypeScript
         working-directory: ./infrastructure

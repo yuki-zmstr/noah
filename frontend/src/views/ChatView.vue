@@ -410,20 +410,17 @@ unsubscribeFunctions.push(
     }
 
     if (!currentStreamingMessage.value) {
-      // Start a new streaming message with empty content, then append the first chunk
-      currentStreamingMessage.value = chatStore.addStreamingMessage("");
-      // Now append the first chunk like any other chunk
-      chatStore.appendToStreamingMessage(
-        currentStreamingMessage.value.id,
+      // Start a new streaming message with the chunk content (which is now full accumulated content)
+      currentStreamingMessage.value = chatStore.addStreamingMessage(
         chunk.content,
-        { sequence: chunk.sequence },
       );
     } else {
-      // Append new chunk to existing streaming message with deduplication
-      chatStore.appendToStreamingMessage(
+      // Replace the entire message content with the new accumulated content
+      chatStore.updateStreamingMessage(
         currentStreamingMessage.value.id,
-        chunk.content,
+        chunk.content, // This is now the full accumulated content
         { sequence: chunk.sequence },
+        false, // Replace, don't append
       );
     }
 
@@ -492,6 +489,8 @@ watch(streamError, (error) => {
 
 // Initialize on mount
 onMounted(async () => {
+  console.log(`[ChatView] Component mounted`);
+
   // Ensure user is authenticated
   if (!authStore.isAuthenticated) {
     router.push("/login");

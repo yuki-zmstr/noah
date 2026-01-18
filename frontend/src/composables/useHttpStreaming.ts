@@ -94,7 +94,6 @@ export function useHttpStreaming() {
 
   const handleStreamMessage = (data: any) => {
     const { type } = data
-    console.log('Received stream message:', type, data)
     
     if (messageHandlers[type as keyof typeof messageHandlers]) {
       messageHandlers[type as keyof typeof messageHandlers].forEach((handler: any) => handler(data))
@@ -169,12 +168,10 @@ export function useHttpStreaming() {
   // Event handlers - return unsubscribe functions to allow cleanup
   const onContentChunk = (callback: (chunk: { content: string, is_final: boolean, timestamp: string, sequence?: number }) => void) => {
     messageHandlers.content_chunk.push(callback)
-    console.log(`[useHttpStreaming] Registered content_chunk handler. Total handlers: ${messageHandlers.content_chunk.length}`)
     return () => {
       const index = messageHandlers.content_chunk.indexOf(callback)
       if (index > -1) {
         messageHandlers.content_chunk.splice(index, 1)
-        console.log(`[useHttpStreaming] Unregistered content_chunk handler. Remaining handlers: ${messageHandlers.content_chunk.length}`)
       }
     }
   }

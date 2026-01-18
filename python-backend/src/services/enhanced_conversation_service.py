@@ -74,11 +74,13 @@ class EnhancedConversationService:
             
             # Process with appropriate service
             if self.use_strands:
+                logger.info("Using Strands service for streaming")
                 async for chunk in self._process_with_strands_streaming(
                     session, user_message, db, metadata
                 ):
                     yield chunk
             else:
+                logger.info("Using Agent Core service for streaming")
                 async for chunk in self._process_with_agent_core_streaming(
                     session, user_message, db, metadata
                 ):
@@ -121,17 +123,19 @@ class EnhancedConversationService:
                     metadata=metadata
                 ):
                     if chunk["type"] == "content_chunk":
-                        # Stream content chunk with sequence number
+                        # Accumulate content first
+                        full_response_content += chunk["content"]
+                        
+                        # Stream the FULL accumulated content, not just the chunk
                         yield {
                             "type": "content_chunk",
-                            "content": chunk["content"],
+                            "content": full_response_content,  # Send full content, not just chunk
                             "is_final": chunk["is_final"],
                             "timestamp": chunk["timestamp"],
                             "sequence": chunk_sequence
                         }
 
                         chunk_sequence += 1  # Increment sequence for each chunk
-                        full_response_content += chunk["content"]
 
                         # Collect tool calls
                         if chunk.get("tool_calls"):
@@ -358,15 +362,16 @@ class EnhancedConversationService:
             user_profile=user_profile
         ):
             chunk_sequence += 1
-            # Stream the content chunk with sequence number
+            full_response_content += chunk
+            
+            # Stream the FULL accumulated content, not just the chunk
             yield {
                 "type": "content_chunk",
-                "content": chunk,
+                "content": full_response_content,  # Send full content, not just chunk
                 "is_final": False,
                 "sequence": chunk_sequence,
                 "timestamp": datetime.utcnow().isoformat()
             }
-            full_response_content += chunk
 
         # Send final content chunk
         yield {
@@ -437,15 +442,16 @@ class EnhancedConversationService:
             user_profile=user_profile
         ):
             chunk_sequence += 1
-            # Stream the content chunk with sequence number
+            full_response_content += chunk
+            
+            # Stream the FULL accumulated content, not just the chunk
             yield {
                 "type": "content_chunk",
-                "content": chunk,
+                "content": full_response_content,  # Send full content, not just chunk
                 "is_final": False,
                 "sequence": chunk_sequence,
                 "timestamp": datetime.utcnow().isoformat()
             }
-            full_response_content += chunk
 
         # Send final content chunk
         yield {
@@ -496,6 +502,7 @@ class EnhancedConversationService:
         """Handle purchase inquiry with AI-generated streaming responses."""
         # Generate AI response with streaming
         full_response_content = ""
+        chunk_sequence = 0
         async for chunk in self.ai_response_service.generate_streaming_response(
             user_message=user_message,
             intent=intent,
@@ -503,14 +510,17 @@ class EnhancedConversationService:
             conversation_history=conversation_history,
             user_profile=user_profile
         ):
-            # Stream the content chunk
+            chunk_sequence += 1
+            full_response_content += chunk
+            
+            # Stream the FULL accumulated content, not just the chunk
             yield {
                 "type": "content_chunk",
-                "content": chunk,
+                "content": full_response_content,  # Send full content, not just chunk
                 "is_final": False,
+                "sequence": chunk_sequence,
                 "timestamp": datetime.utcnow().isoformat()
             }
-            full_response_content += chunk
 
         # Send final content chunk
         yield {
