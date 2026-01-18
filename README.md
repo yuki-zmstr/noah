@@ -48,6 +48,10 @@ docker compose up -d
 npm run dev
 ```
 
+### Database Access
+
+For connecting to the production RDS database using DBeaver or other PostgreSQL clients, see [DATABASE_CONNECTION.md](DATABASE_CONNECTION.md).
+
 ### Project Structure
 
 ```

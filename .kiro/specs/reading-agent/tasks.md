@@ -281,7 +281,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - _Requirements: All system requirements_
 
 - [ ]\* 15. Integrate Strands Agents framework for enhanced agentic capabilities
-  - [ ] 15.1 Install and configure strands-agents packages
+  - [-] 15.1 Install and configure strands-agents packages
     - Install strands-agents and strands-agents-tools packages via pip
     - Configure strands framework integration with existing FastAPI backend
     - Set up agent orchestration using strands for improved conversation management
