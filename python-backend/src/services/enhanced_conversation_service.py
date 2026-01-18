@@ -107,36 +107,47 @@ class EnhancedConversationService:
             # Stream response from Strands agent
             full_response_content = ""
             tool_calls = []
+            strands_failed = False
             
-            async for chunk in self.strands_service.stream_conversation(
-                user_message=user_message,
-                user_id=user_id,
-                conversation_context=session.context,
-                metadata=metadata
-            ):
-                if chunk["type"] == "content_chunk":
-                    # Stream content chunk
-                    yield {
-                        "type": "content_chunk",
-                        "content": chunk["content"],
-                        "is_final": chunk["is_final"],
-                        "timestamp": chunk["timestamp"]
-                    }
+            try:
+                async for chunk in self.strands_service.stream_conversation(
+                    user_message=user_message,
+                    user_id=user_id,
+                    conversation_context=session.context,
+                    metadata=metadata
+                ):
+                    if chunk["type"] == "content_chunk":
+                        # Stream content chunk
+                        yield {
+                            "type": "content_chunk",
+                            "content": chunk["content"],
+                            "is_final": chunk["is_final"],
+                            "timestamp": chunk["timestamp"]
+                        }
+                        
+                        full_response_content += chunk["content"]
+                        
+                        # Collect tool calls
+                        if chunk.get("tool_calls"):
+                            tool_calls.extend(chunk["tool_calls"])
                     
-                    full_response_content += chunk["content"]
-                    
-                    # Collect tool calls
-                    if chunk.get("tool_calls"):
-                        tool_calls.extend(chunk["tool_calls"])
-                
-                elif chunk["type"] == "error":
-                    yield {
-                        "type": "error",
-                        "content": chunk["content"],
-                        "timestamp": chunk["timestamp"]
-                    }
-                    full_response_content = chunk["content"]
-                    break
+                    elif chunk["type"] == "error":
+                        logger.warning(f"Strands agent error: {chunk['content']}")
+                        strands_failed = True
+                        break
+                        
+            except Exception as strands_error:
+                logger.error(f"Strands streaming failed: {strands_error}")
+                strands_failed = True
+            
+            # If Strands failed, fall back to AI response service
+            if strands_failed:
+                logger.info("Falling back to AI response service due to Strands failure")
+                async for fallback_chunk in self._process_with_agent_core_streaming(
+                    session, user_message, db, metadata
+                ):
+                    yield fallback_chunk
+                return
             
             # Process tool calls and send structured data
             recommendations = []
@@ -149,6 +160,43 @@ class EnhancedConversationService:
                     for rec in discovery_recs:
                         rec["is_discovery"] = True
                     recommendations.extend(discovery_recs)
+            
+            # Send recommendations if available
+            if recommendations:
+                yield {
+                    "type": "recommendations",
+                    "recommendations": recommendations,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            
+            # Store Noah's complete message
+            noah_msg = await self._store_message(
+                session_id=session.session_id,
+                sender="noah",
+                content=full_response_content,
+                recommendations=recommendations if recommendations else None,
+                db=db
+            )
+            
+            # Update session context
+            session.last_activity = datetime.utcnow()
+            db.commit()
+            
+            # Send completion signal
+            yield {
+                "type": "complete",
+                "message_id": noah_msg.message_id,
+                "timestamp": noah_msg.timestamp.isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing with Strands agents: {e}")
+            # Fall back to AI response service
+            logger.info("Falling back to AI response service due to error")
+            async for fallback_chunk in self._process_with_agent_core_streaming(
+                session, user_message, db, metadata
+            ):
+                yield fallback_chunk
             
             # Send recommendations if available
             if recommendations:
@@ -330,6 +378,7 @@ class EnhancedConversationService:
 
         # Generate AI response with streaming
         full_response_content = ""
+        chunk_sequence = 0
         async for chunk in self.ai_response_service.generate_streaming_response(
             user_message=user_message,
             intent=intent,
@@ -338,11 +387,13 @@ class EnhancedConversationService:
             recommendations=recommendations,
             user_profile=user_profile
         ):
-            # Stream the content chunk
+            chunk_sequence += 1
+            # Stream the content chunk with sequence number
             yield {
                 "type": "content_chunk",
                 "content": chunk,
                 "is_final": False,
+                "sequence": chunk_sequence,
                 "timestamp": datetime.utcnow().isoformat()
             }
             full_response_content += chunk
@@ -352,6 +403,7 @@ class EnhancedConversationService:
             "type": "content_chunk",
             "content": "",
             "is_final": True,
+            "sequence": chunk_sequence + 1,
             "timestamp": datetime.utcnow().isoformat()
         }
 
@@ -405,6 +457,7 @@ class EnhancedConversationService:
 
         # Generate AI response with streaming
         full_response_content = ""
+        chunk_sequence = 0
         async for chunk in self.ai_response_service.generate_streaming_response(
             user_message=user_message,
             intent=intent,
@@ -413,11 +466,13 @@ class EnhancedConversationService:
             recommendations=discovery_recommendation,
             user_profile=user_profile
         ):
-            # Stream the content chunk
+            chunk_sequence += 1
+            # Stream the content chunk with sequence number
             yield {
                 "type": "content_chunk",
                 "content": chunk,
                 "is_final": False,
+                "sequence": chunk_sequence,
                 "timestamp": datetime.utcnow().isoformat()
             }
             full_response_content += chunk
@@ -427,6 +482,7 @@ class EnhancedConversationService:
             "type": "content_chunk",
             "content": "",
             "is_final": True,
+            "sequence": chunk_sequence + 1,
             "timestamp": datetime.utcnow().isoformat()
         }
 

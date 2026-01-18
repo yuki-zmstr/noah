@@ -193,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from "vue";
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { useChatStore } from "@/stores/chat";
 import { useAuthStore } from "@/stores/auth";
@@ -218,6 +218,7 @@ const {
   onRecommendations,
   onComplete,
   onError,
+  cleanup,
 } = useHttpStreaming();
 
 // Reactive state
@@ -385,69 +386,86 @@ const scrollToBottom = () => {
   }
 };
 
-// HTTP Streaming event handlers
-onContentChunk((chunk) => {
-  if (!currentStreamingMessage.value) {
-    // Start a new streaming message with the first chunk
-    currentStreamingMessage.value = chatStore.addStreamingMessage(
-      chunk.content,
-    );
-  } else {
-    // Append new chunk to existing streaming message
-    chatStore.appendToStreamingMessage(
-      currentStreamingMessage.value.id,
-      chunk.content,
-    );
-  }
+// HTTP Streaming event handlers - store unsubscribe functions
+const unsubscribeFunctions: Array<() => void> = [];
 
-  nextTick(() => scrollToBottom());
-});
+// Register event handlers and store their unsubscribe functions
+unsubscribeFunctions.push(
+  onContentChunk((chunk) => {
+    // Prevent processing if we're not currently streaming or if chunk is empty
+    if (!isStreaming.value || !chunk.content) {
+      return;
+    }
+
+    if (!currentStreamingMessage.value) {
+      // Start a new streaming message with the first chunk
+      currentStreamingMessage.value = chatStore.addStreamingMessage(
+        chunk.content,
+      );
+    } else {
+      // Append new chunk to existing streaming message with deduplication
+      chatStore.appendToStreamingMessage(
+        currentStreamingMessage.value.id,
+        chunk.content,
+        { sequence: chunk.sequence },
+      );
+    }
+
+    nextTick(() => scrollToBottom());
+  })
+);
 
 // Handle recommendations
-onRecommendations((data) => {
-  if (currentStreamingMessage.value) {
-    chatStore.updateStreamingMessage(
-      currentStreamingMessage.value.id,
-      currentStreamingMessage.value.content,
-      { recommendations: data.recommendations },
-    );
-    // Update message type
-    const messageIndex = chatStore.messages.findIndex(
-      (msg) => msg.id === currentStreamingMessage.value?.id,
-    );
-    if (messageIndex !== -1) {
-      chatStore.messages[messageIndex].type = "recommendation";
+unsubscribeFunctions.push(
+  onRecommendations((data) => {
+    if (currentStreamingMessage.value) {
+      chatStore.updateStreamingMessage(
+        currentStreamingMessage.value.id,
+        currentStreamingMessage.value.content,
+        { recommendations: data.recommendations },
+      );
+      // Update message type
+      const messageIndex = chatStore.messages.findIndex(
+        (msg) => msg.id === currentStreamingMessage.value?.id,
+      );
+      if (messageIndex !== -1) {
+        chatStore.messages[messageIndex].type = "recommendation";
+      }
     }
-  }
-  nextTick(() => scrollToBottom());
-});
+    nextTick(() => scrollToBottom());
+  })
+);
 
 // Handle message completion
-onComplete((data) => {
-  if (currentStreamingMessage.value) {
-    // Finalize the streaming message (content is already accumulated from chunks)
-    chatStore.finalizeStreamingMessage(currentStreamingMessage.value.id);
-    currentStreamingMessage.value = null;
-  }
-  nextTick(() => scrollToBottom());
-});
+unsubscribeFunctions.push(
+  onComplete((data) => {
+    if (currentStreamingMessage.value) {
+      // Finalize the streaming message (content is already accumulated from chunks)
+      chatStore.finalizeStreamingMessage(currentStreamingMessage.value.id);
+      currentStreamingMessage.value = null;
+    }
+    nextTick(() => scrollToBottom());
+  })
+);
 
 // Handle streaming errors
-onError((data) => {
-  if (currentStreamingMessage.value) {
-    // Update the streaming message with error content
-    chatStore.updateStreamingMessage(
-      currentStreamingMessage.value.id,
-      data.content,
-    );
-    chatStore.finalizeStreamingMessage(currentStreamingMessage.value.id);
-    currentStreamingMessage.value = null;
-  } else {
-    // Add error as a new message
-    chatStore.addNoahMessage(data.content, "text");
-  }
-  nextTick(() => scrollToBottom());
-});
+unsubscribeFunctions.push(
+  onError((data) => {
+    if (currentStreamingMessage.value) {
+      // Update the streaming message with error content
+      chatStore.updateStreamingMessage(
+        currentStreamingMessage.value.id,
+        data.content,
+      );
+      chatStore.finalizeStreamingMessage(currentStreamingMessage.value.id);
+      currentStreamingMessage.value = null;
+    } else {
+      // Add error as a new message
+      chatStore.addNoahMessage(data.content, "text");
+    }
+    nextTick(() => scrollToBottom());
+  })
+);
 
 // Watch for stream errors
 watch(streamError, (error) => {
@@ -471,5 +489,13 @@ onMounted(async () => {
 
   // Load conversation history
   await loadConversationHistory();
+});
+
+// Cleanup on unmount to prevent duplicate handlers
+onBeforeUnmount(() => {
+  // Call all unsubscribe functions
+  unsubscribeFunctions.forEach(unsubscribe => unsubscribe());
+  // Clear the handler arrays
+  cleanup();
 });
 </script>

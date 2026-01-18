@@ -3,6 +3,18 @@ import { ref, computed } from 'vue'
 import type { ChatMessage, ChatSession } from '@/types/chat'
 import { useAuthStore } from '@/stores/auth'
 
+// Debounce utility for localStorage saves
+let saveTimeout: NodeJS.Timeout | null = null
+const debouncedSave = (userId: string, saveFunction: (userId: string) => void) => {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
+  }
+  saveTimeout = setTimeout(() => {
+    saveFunction(userId)
+    saveTimeout = null
+  }, 500) // Save after 500ms of inactivity
+}
+
 export const useChatStore = defineStore('chat', () => {
   // State
   const currentSession = ref<ChatSession | null>(null)
@@ -66,7 +78,15 @@ export const useChatStore = defineStore('chat', () => {
   const saveUserMessages = (userId: string) => {
     try {
       const storageKey = `noah_messages_${userId}`
-      localStorage.setItem(storageKey, JSON.stringify(messages.value))
+      // Create a clean version of messages for storage (remove non-serializable data like Sets)
+      const cleanMessages = messages.value.map(msg => ({
+        ...msg,
+        metadata: msg.metadata ? {
+          ...msg.metadata,
+          processedChunks: undefined // Don't save chunk tracking data
+        } : undefined
+      }))
+      localStorage.setItem(storageKey, JSON.stringify(cleanMessages))
     } catch (err) {
       console.error('Failed to save user messages:', err)
     }
@@ -121,7 +141,11 @@ export const useChatStore = defineStore('chat', () => {
       content,
       sender: 'noah',
       type,
-      timestamp: new Date()
+      timestamp: new Date(),
+      metadata: {
+        isStreaming: true,
+        processedChunks: new Set<string>() // Track processed chunks to prevent duplicates
+      }
     }
     
     messages.value.push(newMessage)
@@ -153,7 +177,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       
       if (metadata) {
-        messages.value[messageIndex].metadata = metadata
+        messages.value[messageIndex].metadata = { ...messages.value[messageIndex].metadata, ...metadata }
       }
       
       // Update in session as well
@@ -166,29 +190,73 @@ export const useChatStore = defineStore('chat', () => {
             currentSession.value.messages[sessionMessageIndex].content = content
           }
           if (metadata) {
-            currentSession.value.messages[sessionMessageIndex].metadata = metadata
+            currentSession.value.messages[sessionMessageIndex].metadata = { 
+              ...currentSession.value.messages[sessionMessageIndex].metadata, 
+              ...metadata 
+            }
           }
         }
       }
       
-      // Save updated messages for the current user
+      // Save updated messages for the current user (debounced during streaming)
       if (authStore.userId) {
-        saveUserMessages(authStore.userId)
+        const message = messages.value[messageIndex]
+        if (message.metadata?.isStreaming) {
+          debouncedSave(authStore.userId, saveUserMessages)
+        } else {
+          saveUserMessages(authStore.userId)
+        }
       }
     }
   }
 
   const appendToStreamingMessage = (messageId: string, content: string, metadata?: ChatMessage['metadata']) => {
-    updateStreamingMessage(messageId, content, metadata, true)
+    const messageIndex = messages.value.findIndex(msg => msg.id === messageId)
+    if (messageIndex !== -1) {
+      const message = messages.value[messageIndex]
+      const processedChunks = message.metadata?.processedChunks as Set<string> || new Set<string>()
+      
+      // Generate chunk ID - prefer sequence number if available, otherwise use content hash
+      let chunkId: string
+      if (metadata?.sequence) {
+        chunkId = `seq_${metadata.sequence}`
+      } else {
+        const contentHash = content.split('').reduce((hash, char) => {
+          return ((hash << 5) - hash) + char.charCodeAt(0)
+        }, 0)
+        chunkId = `${Date.now()}_${Math.abs(contentHash)}_${content.length}`
+      }
+      
+      // Check if this chunk has already been processed
+      if (processedChunks.has(chunkId)) {
+        console.warn(`Duplicate chunk detected and skipped: ${chunkId}`)
+        return
+      }
+      
+      // Mark chunk as processed
+      processedChunks.add(chunkId)
+      
+      // Update the message with the new chunk
+      updateStreamingMessage(messageId, content, { 
+        ...metadata, 
+        processedChunks 
+      }, true)
+    }
   }
 
   const finalizeStreamingMessage = (messageId: string, finalContent?: string, metadata?: ChatMessage['metadata']) => {
     // If finalContent is provided, replace the entire content (for cases where backend sends complete message)
     // Otherwise, just mark as finalized (content was already accumulated via chunks)
+    const finalMetadata = {
+      ...metadata,
+      isStreaming: false,
+      processedChunks: undefined // Clear chunk tracking data
+    }
+    
     if (finalContent) {
-      updateStreamingMessage(messageId, finalContent, metadata, false)
-    } else if (metadata) {
-      updateStreamingMessage(messageId, '', metadata, false)
+      updateStreamingMessage(messageId, finalContent, finalMetadata, false)
+    } else {
+      updateStreamingMessage(messageId, '', finalMetadata, false)
     }
   }
 

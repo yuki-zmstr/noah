@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     strands_temperature: float = 0.7
     strands_max_tokens: int = 1000
     strands_streaming_enabled: bool = True
+    
+    # OpenTelemetry Configuration
+    opentelemetry_enabled: bool = False  # Disable by default to avoid context issues
+    opentelemetry_service_name: str = "noah-reading-agent"
+    opentelemetry_endpoint: str = ""
 
     # Amazon Product API
     amazon_access_key: str = ""

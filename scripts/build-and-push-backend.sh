@@ -92,20 +92,58 @@ ECS_SERVICE=$(aws cloudformation describe-stack-resources \
 if [[ -n "$ECS_CLUSTER" && -n "$ECS_SERVICE" && "$ECS_CLUSTER" != "None" && "$ECS_SERVICE" != "None" ]]; then
   echo "🚀 Updating ECS service with new image..."
   
-  # Get current task definition
-  TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $ECS_SERVICE --query 'taskDefinition')
+  # Extract cluster and service names from ARNs
+  CLUSTER_NAME=$(echo $ECS_CLUSTER | cut -d'/' -f2)
+  SERVICE_NAME=$(echo $ECS_SERVICE | cut -d'/' -f3)
   
-  # Update image URI in task definition
-  NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "$ECR_URI:$IMAGE_TAG" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
+  # Get current task definition ARN from the service
+  echo "📋 Getting current task definition from service..."
+  CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+    --cluster $CLUSTER_NAME \
+    --services $SERVICE_NAME \
+    --query 'services[0].taskDefinition' \
+    --output text)
+  
+  if [[ -z "$CURRENT_TASK_DEF_ARN" || "$CURRENT_TASK_DEF_ARN" == "None" ]]; then
+    echo "❌ Could not get current task definition from service"
+    exit 1
+  fi
+  
+  echo "Current task definition: $CURRENT_TASK_DEF_ARN"
+  
+  # Get current task definition
+  echo "📋 Getting current task definition..."
+  TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $CURRENT_TASK_DEF_ARN --query 'taskDefinition' --output json)
+  
+  # Create a temporary file for the new task definition
+  TEMP_TASK_DEF=$(mktemp)
+  
+  # Update image URI in task definition and clean up fields
+  echo $TASK_DEFINITION | jq --arg IMAGE "$ECR_URI:$IMAGE_TAG" '
+    .containerDefinitions[0].image = $IMAGE |
+    del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)
+  ' > $TEMP_TASK_DEF
+  
+  # Validate the JSON before using it
+  if ! jq empty $TEMP_TASK_DEF 2>/dev/null; then
+    echo "❌ Generated task definition JSON is invalid"
+    cat $TEMP_TASK_DEF
+    rm $TEMP_TASK_DEF
+    exit 1
+  fi
   
   # Register new task definition
-  NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+  echo "📝 Registering new task definition..."
+  NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file://$TEMP_TASK_DEF --query 'taskDefinition.taskDefinitionArn' --output text)
+  
+  # Clean up temp file
+  rm $TEMP_TASK_DEF
   
   # Update service
-  aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $NEW_TASK_DEF_ARN
+  aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --task-definition $NEW_TASK_DEF_ARN
   
   echo "⏳ Waiting for deployment to complete..."
-  aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE
+  aws ecs wait services-stable --cluster $CLUSTER_NAME --services $SERVICE_NAME
   
   echo "✅ ECS service updated successfully!"
 else

@@ -1,5 +1,8 @@
 """Main FastAPI application entry point."""
 
+# Configure telemetry early to avoid context issues
+import src.telemetry_config  # This must be imported first
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware

@@ -28,11 +28,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://api-noah.com',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'https://api-noah.com',
+        target: 'http://localhost:8000',
         ws: true,
       },
     },

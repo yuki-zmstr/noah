@@ -25,7 +25,7 @@ const developmentConfig = {
   userPoolId: '',
   userPoolWebClientId: '',
   identityPoolId: '',
-  apiEndpoint: 'https://api-noah.com',
+  apiEndpoint: 'http://localhost:8000',
 }
 
 // Use environment variables if available, otherwise use production/development defaults

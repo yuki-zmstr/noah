@@ -8,7 +8,7 @@ export function useHttpStreaming() {
 
   // Message handlers
   const messageHandlers = {
-    content_chunk: [] as Array<(chunk: { content: string, is_final: boolean, timestamp: string }) => void>,
+    content_chunk: [] as Array<(chunk: { content: string, is_final: boolean, timestamp: string, sequence?: number }) => void>,
     recommendations: [] as Array<(data: { recommendations: any[], timestamp: string }) => void>,
     complete: [] as Array<(data: { message_id: string, timestamp: string }) => void>,
     error: [] as Array<(data: { content: string, timestamp: string }) => void>,
@@ -166,21 +166,53 @@ export function useHttpStreaming() {
     }
   }
 
-  // Event handlers
-  const onContentChunk = (callback: (chunk: { content: string, is_final: boolean, timestamp: string }) => void) => {
+  // Event handlers - return unsubscribe functions to allow cleanup
+  const onContentChunk = (callback: (chunk: { content: string, is_final: boolean, timestamp: string, sequence?: number }) => void) => {
     messageHandlers.content_chunk.push(callback)
+    return () => {
+      const index = messageHandlers.content_chunk.indexOf(callback)
+      if (index > -1) {
+        messageHandlers.content_chunk.splice(index, 1)
+      }
+    }
   }
 
   const onRecommendations = (callback: (data: { recommendations: any[], timestamp: string }) => void) => {
     messageHandlers.recommendations.push(callback)
+    return () => {
+      const index = messageHandlers.recommendations.indexOf(callback)
+      if (index > -1) {
+        messageHandlers.recommendations.splice(index, 1)
+      }
+    }
   }
 
   const onComplete = (callback: (data: { message_id: string, timestamp: string }) => void) => {
     messageHandlers.complete.push(callback)
+    return () => {
+      const index = messageHandlers.complete.indexOf(callback)
+      if (index > -1) {
+        messageHandlers.complete.splice(index, 1)
+      }
+    }
   }
 
   const onError = (callback: (data: { content: string, timestamp: string }) => void) => {
     messageHandlers.error.push(callback)
+    return () => {
+      const index = messageHandlers.error.indexOf(callback)
+      if (index > -1) {
+        messageHandlers.error.splice(index, 1)
+      }
+    }
+  }
+
+  // Cleanup function to remove all handlers
+  const cleanup = () => {
+    messageHandlers.content_chunk = []
+    messageHandlers.recommendations = []
+    messageHandlers.complete = []
+    messageHandlers.error = []
   }
 
   return {
@@ -192,6 +224,7 @@ export function useHttpStreaming() {
     onContentChunk,
     onRecommendations,
     onComplete,
-    onError
+    onError,
+    cleanup
   }
 }

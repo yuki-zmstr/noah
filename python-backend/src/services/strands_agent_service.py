@@ -1,6 +1,8 @@
 """Strands Agents framework integration service."""
 
 import logging
+import asyncio
+from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, Any, AsyncGenerator
 from datetime import datetime
 
@@ -324,6 +326,28 @@ Use these tools when appropriate to provide the best possible reading assistance
         except Exception:
             return None
 
+    @asynccontextmanager
+    async def _safe_stream_context(self, stream_generator):
+        """Context manager to safely handle stream generators and cleanup."""
+        try:
+            yield stream_generator
+        except GeneratorExit:
+            logger.debug("Stream generator exited gracefully")
+        except Exception as e:
+            logger.error(f"Error in stream context: {e}")
+            raise
+        finally:
+            # Attempt to close the generator safely
+            try:
+                if hasattr(stream_generator, 'aclose'):
+                    await stream_generator.aclose()
+                elif hasattr(stream_generator, 'close'):
+                    stream_generator.close()
+            except Exception as cleanup_error:
+                # Suppress cleanup errors to avoid masking the original error
+                logger.debug(f"Error during stream cleanup: {cleanup_error}")
+                pass
+
     async def stream_conversation(
         self,
         user_message: str,
@@ -346,58 +370,76 @@ Use these tools when appropriate to provide the best possible reading assistance
             last_chunk_time = 0
             duplicate_threshold = 0.1  # 100ms threshold for duplicate detection
             
-            # Stream response from Noah agent
-            async for chunk in self.noah_agent.stream_async(context_message):
-                # Convert the raw Strands event to a clean format
-                converted_event = self._convert_event(chunk)
-                
-                if converted_event:
-                    if converted_event['type'] == 'text':
-                        content = converted_event['data']
-                        current_time = datetime.utcnow().timestamp()
-                        
-                        # Skip empty content
-                        if not content or not content.strip():
+            # Create and use the stream generator with safe context management
+            stream_generator = self.noah_agent.stream_async(context_message)
+            
+            async with self._safe_stream_context(stream_generator) as safe_stream:
+                try:
+                    async for chunk in safe_stream:
+                        try:
+                            # Convert the raw Strands event to a clean format
+                            converted_event = self._convert_event(chunk)
+                            
+                            if converted_event:
+                                if converted_event['type'] == 'text':
+                                    content = converted_event['data']
+                                    current_time = datetime.utcnow().timestamp()
+                                    
+                                    # Skip empty content
+                                    if not content or not content.strip():
+                                        continue
+                                    
+                                    # Check if this content is already part of what we've sent
+                                    if content in accumulated_content:
+                                        logger.debug(f"Skipping duplicate content: {content}")
+                                        continue
+                                    
+                                    # Check for rapid duplicates (same content within threshold)
+                                    if (current_time - last_chunk_time) < duplicate_threshold:
+                                        if content == getattr(self, '_last_content', ''):
+                                            logger.debug(f"Skipping rapid duplicate: {content}")
+                                            continue
+                                    
+                                    # Update tracking
+                                    accumulated_content += content
+                                    self._last_content = content
+                                    last_chunk_time = current_time
+                                    
+                                    yield {
+                                        "type": "content_chunk",
+                                        "content": content,
+                                        "is_final": False,
+                                        "tool_calls": [],
+                                        "timestamp": datetime.utcnow().isoformat()
+                                    }
+                                    
+                                elif converted_event['type'] == 'tool_use':
+                                    # Log tool usage but don't yield it as content
+                                    logger.info(f"Tool being used: {converted_event['tool_name']}")
+                                    
+                                elif converted_event['type'] == 'complete':
+                                    yield {
+                                        "type": "content_chunk",
+                                        "content": "",
+                                        "is_final": True,
+                                        "tool_calls": [],
+                                        "timestamp": datetime.utcnow().isoformat()
+                                    }
+                                    break
+                                    
+                        except (GeneratorExit, asyncio.CancelledError):
+                            # Handle graceful shutdown
+                            logger.debug("Stream processing cancelled or exited")
+                            break
+                        except Exception as chunk_error:
+                            # Log chunk processing errors but continue
+                            logger.warning(f"Error processing chunk: {chunk_error}")
                             continue
-                        
-                        # Check if this content is already part of what we've sent
-                        if content in accumulated_content:
-                            logger.debug(f"Skipping duplicate content: {content}")
-                            continue
-                        
-                        # Check for rapid duplicates (same content within threshold)
-                        if (current_time - last_chunk_time) < duplicate_threshold:
-                            if content == getattr(self, '_last_content', ''):
-                                logger.debug(f"Skipping rapid duplicate: {content}")
-                                continue
-                        
-                        # Update tracking
-                        accumulated_content += content
-                        self._last_content = content
-                        last_chunk_time = current_time
-                        
-                        yield {
-                            "type": "content_chunk",
-                            "content": content,
-                            "is_final": False,
-                            "tool_calls": [],
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        
-                    elif converted_event['type'] == 'tool_use':
-                        # Log tool usage but don't yield it as content
-                        logger.info(f"Tool being used: {converted_event['tool_name']}")
-                        
-                    elif converted_event['type'] == 'complete':
-                        yield {
-                            "type": "content_chunk",
-                            "content": "",
-                            "is_final": True,
-                            "tool_calls": [],
-                            "timestamp": datetime.utcnow().isoformat()
-                        }
-                        break
-                
+                            
+                except (GeneratorExit, asyncio.CancelledError):
+                    # Handle graceful shutdown
+                    logger.debug("Stream iteration cancelled or exited")
+                    
         except Exception as e:
             logger.error(f"Error streaming conversation with Strands agent: {e}")
             yield {
