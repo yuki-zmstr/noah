@@ -3,7 +3,38 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+
+# Try to import ProxyHeadersMiddleware from different locations
+try:
+    from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
+except ImportError:
+    try:
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+    except ImportError:
+        # Fallback: create a simple proxy headers middleware
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.requests import Request as StarletteRequest
+        from starlette.responses import Response
+        
+        class ProxyHeadersMiddleware(BaseHTTPMiddleware):
+            def __init__(self, app, trusted_hosts=None):
+                super().__init__(app)
+                self.trusted_hosts = trusted_hosts or ["*"]
+            
+            async def dispatch(self, request: StarletteRequest, call_next):
+                # Handle X-Forwarded-* headers from load balancer
+                if "x-forwarded-proto" in request.headers:
+                    request.scope["scheme"] = request.headers["x-forwarded-proto"]
+                if "x-forwarded-for" in request.headers:
+                    # Use the first IP in the chain (original client)
+                    forwarded_for = request.headers["x-forwarded-for"].split(",")[0].strip()
+                    if request.client:
+                        request.scope["client"] = (forwarded_for, request.client.port)
+                if "x-forwarded-host" in request.headers:
+                    request.scope["server"] = (request.headers["x-forwarded-host"], None)
+                
+                response = await call_next(request)
+                return response
 import logging
 import asyncio
 import atexit
