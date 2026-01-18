@@ -6,9 +6,7 @@ on:
   pull_request:
     branches: [main, develop]
 
-# Required for OIDC authentication with AWS
 permissions:
-  id-token: write
   contents: read
 
 env:
