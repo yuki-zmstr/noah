@@ -97,7 +97,7 @@ export const useChatStore = defineStore('chat', () => {
     
     const newMessage: ChatMessage = {
       ...message,
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       timestamp: new Date()
     }
     
@@ -137,7 +137,7 @@ export const useChatStore = defineStore('chat', () => {
     const authStore = useAuthStore()
     
     const newMessage: ChatMessage = {
-      id: `msg_streaming_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_streaming_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
       content,
       sender: 'noah',
       type,
@@ -218,7 +218,7 @@ export const useChatStore = defineStore('chat', () => {
       
       // Generate chunk ID - prefer sequence number if available, otherwise use content hash
       let chunkId: string
-      if (metadata?.sequence) {
+      if (metadata?.sequence !== undefined) {
         chunkId = `seq_${metadata.sequence}`
       } else {
         const contentHash = content.split('').reduce((hash, char) => {
@@ -226,10 +226,12 @@ export const useChatStore = defineStore('chat', () => {
         }, 0)
         chunkId = `${Date.now()}_${Math.abs(contentHash)}_${content.length}`
       }
-      
+
+      console.log(`[chat.ts] Processing chunk ${chunkId}, content length: ${content.length}, total processed: ${processedChunks.size}`)
+
       // Check if this chunk has already been processed
       if (processedChunks.has(chunkId)) {
-        console.warn(`Duplicate chunk detected and skipped: ${chunkId}`)
+        console.warn(`[chat.ts] Duplicate chunk detected and skipped: ${chunkId}`)
         return
       }
       
@@ -247,16 +249,37 @@ export const useChatStore = defineStore('chat', () => {
   const finalizeStreamingMessage = (messageId: string, finalContent?: string, metadata?: ChatMessage['metadata']) => {
     // If finalContent is provided, replace the entire content (for cases where backend sends complete message)
     // Otherwise, just mark as finalized (content was already accumulated via chunks)
-    const finalMetadata = {
-      ...metadata,
-      isStreaming: false,
-      processedChunks: undefined // Clear chunk tracking data
-    }
-    
-    if (finalContent) {
-      updateStreamingMessage(messageId, finalContent, finalMetadata, false)
-    } else {
-      updateStreamingMessage(messageId, '', finalMetadata, false)
+    const messageIndex = messages.value.findIndex(msg => msg.id === messageId)
+
+    if (messageIndex !== -1) {
+      const finalMetadata = {
+        ...messages.value[messageIndex].metadata,
+        ...metadata,
+        isStreaming: false,
+        processedChunks: undefined // Clear chunk tracking data
+      }
+
+      if (finalContent) {
+        // Replace with final content
+        updateStreamingMessage(messageId, finalContent, finalMetadata, false)
+      } else {
+        // Just update metadata without changing content
+        messages.value[messageIndex].metadata = finalMetadata
+
+        // Update in session as well
+        if (currentSession.value) {
+          const sessionMessageIndex = currentSession.value.messages.findIndex(msg => msg.id === messageId)
+          if (sessionMessageIndex !== -1) {
+            currentSession.value.messages[sessionMessageIndex].metadata = finalMetadata
+          }
+        }
+
+        // Save updated messages
+        const authStore = useAuthStore()
+        if (authStore.userId) {
+          saveUserMessages(authStore.userId)
+        }
+      }
     }
   }
 

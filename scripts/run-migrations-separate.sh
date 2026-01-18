@@ -19,9 +19,26 @@ DB_ENDPOINT=$(aws cloudformation describe-stacks \
   --output text)
 
 # Get database credentials from Secrets Manager
-DB_SECRET_ARN=$(aws rds describe-db-instances \
-  --query 'DBInstances[?contains(DBInstanceIdentifier, `noahinfrastructurestack`)].MasterUserSecret.SecretArn' \
+echo "📋 Finding database secret..."
+DB_SECRET_ARN=$(aws secretsmanager list-secrets \
+  --query 'SecretList[?contains(Name, `NoahInfrastructureStack`)].ARN' \
   --output text | head -1)
+
+if [ -z "$DB_SECRET_ARN" ]; then
+  echo "Trying alternative secret discovery method..."
+  DB_SECRET_ARN=$(aws secretsmanager list-secrets \
+    --query 'SecretList[?contains(Name, `Noah`)].ARN' \
+    --output text | head -1)
+fi
+
+if [ -z "$DB_SECRET_ARN" ]; then
+  echo "❌ Could not find database secret"
+  echo "Available secrets:"
+  aws secretsmanager list-secrets --query 'SecretList[].Name' --output text
+  exit 1
+fi
+
+echo "Found database secret: $DB_SECRET_ARN"
 
 DB_CREDENTIALS=$(aws secretsmanager get-secret-value \
   --secret-id "$DB_SECRET_ARN" \

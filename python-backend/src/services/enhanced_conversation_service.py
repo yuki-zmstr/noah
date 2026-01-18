@@ -100,15 +100,16 @@ class EnhancedConversationService:
         try:
             # Extract user_id from session
             user_id = session.user_id
-            
+
             # Get conversation history for context
             conversation_history = await self._get_recent_conversation_history(session.session_id, db)
-            
+
             # Stream response from Strands agent
             full_response_content = ""
             tool_calls = []
             strands_failed = False
-            
+            chunk_sequence = 0  # Add sequence counter for deduplication
+
             try:
                 async for chunk in self.strands_service.stream_conversation(
                     user_message=user_message,
@@ -117,16 +118,18 @@ class EnhancedConversationService:
                     metadata=metadata
                 ):
                     if chunk["type"] == "content_chunk":
-                        # Stream content chunk
+                        # Stream content chunk with sequence number
                         yield {
                             "type": "content_chunk",
                             "content": chunk["content"],
                             "is_final": chunk["is_final"],
-                            "timestamp": chunk["timestamp"]
+                            "timestamp": chunk["timestamp"],
+                            "sequence": chunk_sequence
                         }
-                        
+
+                        chunk_sequence += 1  # Increment sequence for each chunk
                         full_response_content += chunk["content"]
-                        
+
                         # Collect tool calls
                         if chunk.get("tool_calls"):
                             tool_calls.extend(chunk["tool_calls"])
@@ -197,42 +200,6 @@ class EnhancedConversationService:
                 session, user_message, db, metadata
             ):
                 yield fallback_chunk
-            
-            # Send recommendations if available
-            if recommendations:
-                yield {
-                    "type": "recommendations",
-                    "recommendations": recommendations,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            
-            # Store Noah's complete message
-            noah_msg = await self._store_message(
-                session_id=session.session_id,
-                sender="noah",
-                content=full_response_content,
-                recommendations=recommendations if recommendations else None,
-                db=db
-            )
-            
-            # Update session context
-            session.last_activity = datetime.utcnow()
-            db.commit()
-            
-            # Send completion signal
-            yield {
-                "type": "complete",
-                "message_id": noah_msg.message_id,
-                "timestamp": noah_msg.timestamp.isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"Error processing with Strands agents: {e}")
-            yield {
-                "type": "error",
-                "content": "I'm sorry, I encountered an issue processing your message. Please try again!",
-                "timestamp": datetime.utcnow().isoformat()
-            }
 
     async def _process_with_agent_core_streaming(
         self,

@@ -19,6 +19,10 @@ export interface ChatMessage {
       newLevel: number
       impact: string
     }
+    // Streaming-related metadata
+    isStreaming?: boolean
+    processedChunks?: Set<string>
+    sequence?: number
   }
 }
 
