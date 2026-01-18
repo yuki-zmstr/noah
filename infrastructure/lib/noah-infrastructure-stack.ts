@@ -254,6 +254,22 @@ export class NoahInfrastructureStack extends cdk.Stack {
       })
     )
 
+    // Add Bedrock permissions for Strands agents
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          'bedrock:Converse',
+          'bedrock:ConverseStream',
+          'bedrock:ListFoundationModels',
+          'bedrock:GetFoundationModel'
+        ],
+        resources: ['*'],
+      })
+    )
+
     // Bastion Host for database access
     const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
       vpc,
