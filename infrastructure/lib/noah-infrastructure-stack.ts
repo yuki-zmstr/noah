@@ -12,8 +12,6 @@ import * as logs from 'aws-cdk-lib/aws-logs'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
-import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager'
-import * as route53 from 'aws-cdk-lib/aws-route53'
 import { Construct } from 'constructs'
 
 export class NoahInfrastructureStack extends cdk.Stack {
@@ -232,6 +230,30 @@ export class NoahInfrastructureStack extends cdk.Stack {
       unhealthyThresholdCount: 5,
     })
 
+    // Add CloudWatch permissions to the ECS task role
+    backendService.taskDefinition.taskRole.addManagedPolicy(
+      iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy')
+    )
+    
+    // Add specific CloudWatch permissions for custom metrics
+    const taskRole = backendService.taskDefinition.taskRole as iam.Role
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'cloudwatch:PutMetricData',
+          'cloudwatch:GetMetricStatistics',
+          'cloudwatch:ListMetrics',
+          'logs:PutLogEvents',
+          'logs:CreateLogGroup',
+          'logs:CreateLogStream',
+          'logs:DescribeLogStreams',
+          'logs:DescribeLogGroups'
+        ],
+        resources: ['*'],
+      })
+    )
+
     // Bastion Host for database access
     const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
       vpc,
@@ -257,22 +279,15 @@ export class NoahInfrastructureStack extends cdk.Stack {
     // Allow backend to access OpenSearch (commented out for initial deployment)
     // searchDomain.connections.allowFrom(backendService.service, ec2.Port.tcp(443))
 
-    // CloudWatch Log Group for application logs
-    const appLogGroup = new logs.LogGroup(this, 'NoahAppLogGroup', {
-      logGroupName: '/aws/ecs/noah-backend',
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    })
-
     // CloudWatch Alarms for monitoring
-    const cpuAlarm = new cloudwatch.Alarm(this, 'NoahBackendCpuAlarm', {
+    new cloudwatch.Alarm(this, 'NoahBackendCpuAlarm', {
       metric: backendService.service.metricCpuUtilization(),
       threshold: 80,
       evaluationPeriods: 2,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
 
-    const memoryAlarm = new cloudwatch.Alarm(this, 'NoahBackendMemoryAlarm', {
+    new cloudwatch.Alarm(this, 'NoahBackendMemoryAlarm', {
       metric: backendService.service.metricMemoryUtilization(),
       threshold: 80,
       evaluationPeriods: 2,
@@ -280,14 +295,14 @@ export class NoahInfrastructureStack extends cdk.Stack {
     })
 
     // Database monitoring
-    const dbCpuAlarm = new cloudwatch.Alarm(this, 'NoahDatabaseCpuAlarm', {
+    new cloudwatch.Alarm(this, 'NoahDatabaseCpuAlarm', {
       metric: database.metricCPUUtilization(),
       threshold: 80,
       evaluationPeriods: 2,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
 
-    const dbConnectionsAlarm = new cloudwatch.Alarm(this, 'NoahDatabaseConnectionsAlarm', {
+    new cloudwatch.Alarm(this, 'NoahDatabaseConnectionsAlarm', {
       metric: database.metricDatabaseConnections(),
       threshold: 80,
       evaluationPeriods: 2,
@@ -322,7 +337,7 @@ export class NoahInfrastructureStack extends cdk.Stack {
     // CloudFront distribution for frontend
     const distribution = new cloudfront.Distribution(this, 'NoahDistribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(frontendBucket),
+        origin: new origins.S3StaticWebsiteOrigin(frontendBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
@@ -378,7 +393,7 @@ export class NoahInfrastructureStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         },
         '*.js': {
-          origin: new origins.S3Origin(frontendBucket),
+          origin: new origins.S3StaticWebsiteOrigin(frontendBucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: new cloudfront.CachePolicy(this, 'NoahJSCachePolicy', {
             cachePolicyName: 'noah-js-cache-policy',
@@ -391,7 +406,7 @@ export class NoahInfrastructureStack extends cdk.Stack {
           }),
         },
         '*.css': {
-          origin: new origins.S3Origin(frontendBucket),
+          origin: new origins.S3StaticWebsiteOrigin(frontendBucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: new cloudfront.CachePolicy(this, 'NoahCSSCachePolicy', {
             cachePolicyName: 'noah-css-cache-policy',
