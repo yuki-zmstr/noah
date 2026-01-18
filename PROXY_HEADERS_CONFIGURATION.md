@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Noah Reading Agent backend now includes ProxyHeadersMiddleware to properly handle forwarded headers from the Application Load Balancer (ALB) and CloudFront distribution.
+The Noah Reading Agent backend now includes ProxyHeadersMiddleware to properly handle forwarded headers from the Application Load Balancer (ALB) and CloudFront distribution, along with secure CORS configuration for credential-enabled requests.
 
 ## What ProxyHeadersMiddleware Does
 
@@ -13,12 +13,41 @@ ProxyHeadersMiddleware processes the following headers from trusted proxies:
 - `X-Forwarded-Host`: Original host header
 - `X-Forwarded-Port`: Original port
 
+## CORS Configuration
+
+### Security-First CORS Setup
+
+The application uses a security-first CORS configuration:
+
+- **Specific Origins**: Only allows requests from explicitly configured origins
+- **Credentials Support**: Enables `allow_credentials=True` only when using specific origins
+- **Automatic Fallback**: Falls back to `allow_credentials=False` when using wildcard origins
+
 ## Configuration
 
 ### Environment Variables
 
+**Proxy Configuration:**
+
 - `PROXY_HEADERS_ENABLED`: Enable/disable proxy headers middleware (default: true)
 - `TRUSTED_HOSTS`: Comma-separated list of trusted proxy hosts (default: "\*")
+
+**CORS Configuration:**
+
+- `ALLOWED_ORIGINS`: Comma-separated list of allowed origins
+- `CORS_ALLOW_CREDENTIALS`: Enable credentials for CORS requests (default: true)
+
+### Example Configuration
+
+```bash
+# Development
+ALLOWED_ORIGINS=http://localhost:5173,https://localhost:5173
+CORS_ALLOW_CREDENTIALS=true
+
+# Production
+ALLOWED_ORIGINS=https://master.d7603dy3bkh3g.amplifyapp.com,https://d33z9owyqf2ey4.cloudfront.net
+CORS_ALLOW_CREDENTIALS=true
+```
 
 ### Production Considerations
 

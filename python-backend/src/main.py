@@ -56,13 +56,25 @@ def create_app() -> FastAPI:
     app.add_middleware(MonitoringMiddleware)
 
     # Add CORS middleware AFTER monitoring
+    # Use specific origins when credentials are needed for security
+    cors_origins = settings.cors_origins_list if settings.cors_origins_list else ["*"]
+    
+    # Only allow credentials if we have specific origins (not "*") and it's explicitly enabled
+    allow_credentials = (
+        settings.cors_allow_credentials and 
+        len(cors_origins) > 0 and 
+        "*" not in cors_origins
+    )
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Allow all origins (ALB health checks don't send Origin header)
-        allow_credentials=False,  # Must be False when allow_origins is "*"
+        allow_origins=cors_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    logger.info(f"CORS configured with origins: {cors_origins}, credentials: {allow_credentials}")
 
     # Remove the old debugging middleware since MonitoringMiddleware handles this
     # Note: TrustedHostMiddleware removed to allow AWS load balancer health checks
@@ -248,6 +260,11 @@ def create_app() -> FastAPI:
             "real_ip": request.headers.get("x-real-ip"),
             "cloudfront_viewer_country": request.headers.get("cloudfront-viewer-country"),
             "user_agent": request.headers.get("user-agent"),
+            "origin": request.headers.get("origin"),
+            "cors_config": {
+                "allowed_origins": settings.cors_origins_list,
+                "allow_credentials": settings.cors_allow_credentials,
+            }
         }
 
     @app.get("/api/config")
