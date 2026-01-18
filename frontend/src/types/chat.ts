@@ -7,6 +7,18 @@ export interface ChatMessage {
   metadata?: {
     recommendations?: BookRecommendation[]
     purchaseLinks?: PurchaseLink[]
+    preferenceUpdate?: {
+      type: string
+      item: string
+      change: number
+      impact: string
+    }
+    readingLevelUpdate?: {
+      language: string
+      oldLevel: number
+      newLevel: number
+      impact: string
+    }
   }
 }
 

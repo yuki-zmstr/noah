@@ -7,6 +7,7 @@ import type {
   PreferenceOverride,
   PreferenceEvolution
 } from '@/types/preferences'
+import { preferenceUpdateService, type PreferenceUpdateImpact } from '@/services/preferenceUpdateService'
 
 export const usePreferencesStore = defineStore('preferences', () => {
   // State
@@ -158,35 +159,24 @@ export const usePreferencesStore = defineStore('preferences', () => {
     }
   }
 
-  const overridePreference = async (userId: string, override: PreferenceOverride) => {
+  const overridePreference = async (userId: string, override: PreferenceOverride): Promise<PreferenceUpdateImpact[]> => {
     try {
-      isLoading.value = true
-      error.value = null
-
-      const response = await fetch(`/api/preferences/${userId}/preferences/override`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(override),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to override preference: ${response.statusText}`)
-      }
-
-      const result = await response.json()
-      
-      // Refresh transparency data to show changes
-      await fetchTransparencyData(userId)
-
-      return result
+      // Use the preference update service for real-time updates with impact analysis
+      return await preferenceUpdateService.updatePreferenceWithImpact(userId, override)
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to override preference'
       console.error('Error overriding preference:', err)
       throw err
-    } finally {
-      isLoading.value = false
+    }
+  }
+
+  const updateReadingLevelsWithImpact = async (userId: string, language: 'english' | 'japanese', newLevel: number): Promise<PreferenceUpdateImpact[]> => {
+    try {
+      return await preferenceUpdateService.updateReadingLevelWithImpact(userId, language, newLevel)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to update reading level'
+      console.error('Error updating reading level:', err)
+      throw err
     }
   }
 
@@ -233,6 +223,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
     updatePreferences,
     updateReadingLevels,
     overridePreference,
+    updateReadingLevelsWithImpact,
     refreshData,
     clearData,
     setError

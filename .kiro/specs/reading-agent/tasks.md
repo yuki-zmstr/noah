@@ -237,7 +237,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Property 10: Content Storage and Retrieval Consistency**
     - **Validates: Requirements 6.1, 6.2, 6.4**
 
-- [-] 13. Build preference transparency and control features
+- [x] 13. Build preference transparency and control features
   - [x] 13.1 Complete preference dashboard in Vue.js
     - Build user interface for viewing learned preferences and explanations
     - Implement preference editing and override functionality
@@ -245,7 +245,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Connect to backend preference transparency service
     - _Requirements: 8.1, 8.2, 8.3, 8.5_
 
-  - [-] 13.2 Implement immediate preference updates
+  - [x] 13.2 Implement immediate preference updates
     - Create real-time preference modification system
     - Build recommendation refresh mechanism for preference changes
     - Add preference change impact visualization

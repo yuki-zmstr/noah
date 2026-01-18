@@ -7,20 +7,45 @@ export interface AWSConfig {
   apiEndpoint: string
 }
 
-// Development configuration - these will be replaced by environment variables in production
+// Production configuration - detect if we're in production and use production values
+const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+
+// Production values (fallback when env vars don't work)
+const productionConfig = {
+  region: 'ap-northeast-1',
+  userPoolId: 'ap-northeast-1_K4gyhxpG9',
+  userPoolWebClientId: '14ivj9dtdk1c65t390g1l9vbpc',
+  identityPoolId: 'ap-northeast-1:af1ce951-b348-41d1-9a7a-50fceb21efd2',
+  apiEndpoint: 'http://NoahIn-NoahB-oKNHtTs5iPix-286806897.ap-northeast-1.elb.amazonaws.com',
+}
+
+// Development configuration
+const developmentConfig = {
+  region: 'us-east-1',
+  userPoolId: '',
+  userPoolWebClientId: '',
+  identityPoolId: '',
+  apiEndpoint: 'http://localhost:8000',
+}
+
+// Use environment variables if available, otherwise use production/development defaults
 export const awsConfig: AWSConfig = {
-  region: import.meta.env.VITE_AWS_REGION || 'us-east-1',
-  userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || '',
-  userPoolWebClientId: import.meta.env.VITE_COGNITO_CLIENT_ID || '',
-  identityPoolId: import.meta.env.VITE_COGNITO_IDENTITY_POOL_ID || '',
-  apiEndpoint: import.meta.env.VITE_API_ENDPOINT || 'http://localhost:8000',
+  region: import.meta.env.VITE_AWS_REGION || (isProduction ? productionConfig.region : developmentConfig.region),
+  userPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID || (isProduction ? productionConfig.userPoolId : developmentConfig.userPoolId),
+  userPoolWebClientId: import.meta.env.VITE_COGNITO_CLIENT_ID || (isProduction ? productionConfig.userPoolWebClientId : developmentConfig.userPoolWebClientId),
+  identityPoolId: import.meta.env.VITE_COGNITO_IDENTITY_POOL_ID || (isProduction ? productionConfig.identityPoolId : developmentConfig.identityPoolId),
+  apiEndpoint: import.meta.env.VITE_API_ENDPOINT || (isProduction ? productionConfig.apiEndpoint : developmentConfig.apiEndpoint),
 }
 
 // Debug logging for environment variables
-console.log('Environment variables loaded:', {
-  VITE_AWS_REGION: import.meta.env.VITE_AWS_REGION,
-  VITE_API_ENDPOINT: import.meta.env.VITE_API_ENDPOINT,
-  VITE_COGNITO_USER_POOL_ID: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+console.log('Environment detection:', {
+  hostname: window.location.hostname,
+  isProduction,
+  envVars: {
+    VITE_AWS_REGION: import.meta.env.VITE_AWS_REGION,
+    VITE_API_ENDPOINT: import.meta.env.VITE_API_ENDPOINT,
+    VITE_COGNITO_USER_POOL_ID: import.meta.env.VITE_COGNITO_USER_POOL_ID,
+  },
   NODE_ENV: import.meta.env.NODE_ENV,
   MODE: import.meta.env.MODE
 })

@@ -412,6 +412,20 @@
         </RouterLink>
       </div>
     </div>
+
+    <!-- Toast Notifications -->
+    <div class="fixed top-4 right-4 z-50 space-y-2">
+      <ToastNotification
+        v-for="toastItem in toast.toasts"
+        :key="toastItem.id"
+        :type="toastItem.type"
+        :title="toastItem.title"
+        :message="toastItem.message"
+        :duration="toastItem.duration"
+        :auto-close="toastItem.autoClose"
+        @close="toast.remove(toastItem.id)"
+      />
+    </div>
   </div>
 </template>
 
@@ -420,13 +434,17 @@ import { ref, computed, onMounted } from "vue";
 import { RouterLink } from "vue-router";
 import { useLanguageStore } from "@/stores/language";
 import { usePreferencesStore } from "@/stores/preferences";
+import { useToast } from "@/services/toastService";
 import LanguageToggle from "@/components/LanguageToggle.vue";
 import PreferenceItem from "@/components/PreferenceItem.vue";
 import ReadingLevelCard from "@/components/ReadingLevelCard.vue";
+import ToastNotification from "@/components/ToastNotification.vue";
 import type { ContextualPreference } from "@/types/preferences";
+import type { PreferenceUpdateImpact } from "@/services/preferenceUpdateService";
 
 const languageStore = useLanguageStore();
 const preferencesStore = usePreferencesStore();
+const toast = useToast();
 
 // Local state
 const activeTopicFilter = ref<"all" | "strong" | "moderate">("all");
@@ -472,11 +490,14 @@ const refreshData = async () => {
 
 const handleTopicUpdate = async (data: { name: string; weight: number }) => {
   try {
-    await preferencesStore.overridePreference(userId, {
+    const impacts = await preferencesStore.overridePreference(userId, {
       type: "topic",
       key: data.name,
       value: data.weight,
     });
+
+    // Show impact notification
+    showImpactNotification(impacts);
   } catch (error) {
     console.error("Failed to update topic preference:", error);
   }
@@ -487,11 +508,14 @@ const handleContentTypeUpdate = async (data: {
   weight: number;
 }) => {
   try {
-    await preferencesStore.overridePreference(userId, {
+    const impacts = await preferencesStore.overridePreference(userId, {
       type: "content_type",
       key: data.name,
       value: data.weight,
     });
+
+    // Show impact notification
+    showImpactNotification(impacts);
   } catch (error) {
     console.error("Failed to update content type preference:", error);
   }
@@ -502,17 +526,43 @@ const handleReadingLevelUpdate = async (data: {
   level: number;
 }) => {
   try {
-    if (!preferencesStore.readingLevels) return;
+    const impacts = await preferencesStore.updateReadingLevelsWithImpact(
+      userId,
+      data.language,
+      data.level,
+    );
 
-    const updatedLevels = { ...preferencesStore.readingLevels };
-    updatedLevels[data.language] = {
-      ...updatedLevels[data.language],
-      level: data.level,
-    };
-
-    await preferencesStore.updateReadingLevels(userId, updatedLevels);
+    // Show impact notification
+    showImpactNotification(impacts);
   } catch (error) {
     console.error("Failed to update reading level:", error);
+  }
+};
+
+const showImpactNotification = (impacts: PreferenceUpdateImpact[]) => {
+  if (impacts && impacts.length > 0) {
+    const impact = impacts[0];
+
+    toast.success(
+      languageStore.isEnglish ? "Preference Updated" : "設定を更新しました",
+      impact.impactDescription,
+      { duration: 6000 },
+    );
+
+    // If there are affected recommendations, show additional info
+    if (impact.affectedRecommendations && impact.affectedRecommendations > 0) {
+      setTimeout(() => {
+        toast.info(
+          languageStore.isEnglish
+            ? "Recommendations Refreshed"
+            : "推薦を更新しました",
+          languageStore.isEnglish
+            ? `About ${impact.affectedRecommendations} recommendations have been updated based on your new preferences.`
+            : `新しい設定に基づいて約${impact.affectedRecommendations}件の推薦を更新しました。`,
+          { duration: 5000 },
+        );
+      }, 1000);
+    }
   }
 };
 
