@@ -71,6 +71,8 @@
           v-for="message in chatStore.sortedMessages"
           :key="message.id"
           :message="message"
+          @feedback="handleRecommendationFeedback"
+          @purchase-inquiry="handlePurchaseInquiry"
         />
 
         <!-- Typing Indicator -->
@@ -111,6 +113,22 @@
 
       <!-- Input Area -->
       <div class="border-t border-gray-200 bg-white p-4">
+        <!-- Discovery Mode Button -->
+        <div class="flex justify-center mb-3">
+          <button
+            @click="activateDiscoveryMode"
+            :disabled="!isConnected || chatStore.isLoading"
+            class="text-sm px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
+          >
+            ✨
+            {{
+              languageStore.isEnglish
+                ? "I'm feeling lucky!"
+                : "何かおすすめして！"
+            }}
+          </button>
+        </div>
+
         <form @submit.prevent="sendMessage" class="flex space-x-3">
           <input
             v-model="messageInput"
@@ -198,114 +216,13 @@ const sendMessage = async () => {
   // Scroll to bottom
   await nextTick();
   scrollToBottom();
-
-  // Simulate Noah's response for development (remove when backend is ready)
-  simulateNoahResponse(message);
 };
 
-const simulateNoahResponse = (userMessage: string) => {
-  // Show typing indicator
-  isTyping.value = true;
-
-  setTimeout(
-    () => {
-      isTyping.value = false;
-
-      // Generate mock response based on user message - match backend responses
-      let response =
-        "I'm Noah, your reading companion. How can I help you discover your next great read?";
-      let messageType: ChatMessageType["type"] = "text";
-      let metadata: ChatMessageType["metadata"] = undefined;
-
-      if (
-        userMessage.toLowerCase().includes("recommend") ||
-        userMessage.toLowerCase().includes("book")
-      ) {
-        response =
-          "I'd be happy to recommend some books for you! What genres or topics interest you?";
-        messageType = "recommendation";
-        metadata = {
-          recommendations: [
-            {
-              id: "book_1",
-              title: "The Seven Husbands of Evelyn Hugo",
-              author: "Taylor Jenkins Reid",
-              description:
-                "A captivating novel about a reclusive Hollywood icon who finally decides to tell her story.",
-              interestScore: 0.92,
-              readingLevel: "Intermediate",
-              estimatedReadingTime: 420,
-            },
-            {
-              id: "book_2",
-              title: "Educated",
-              author: "Tara Westover",
-              description:
-                "A powerful memoir about education, family, and the struggle between loyalty and independence.",
-              interestScore: 0.88,
-              readingLevel: "Advanced",
-              estimatedReadingTime: 380,
-            },
-          ],
-        };
-      } else if (
-        userMessage.toLowerCase().includes("lucky") ||
-        userMessage.toLowerCase().includes("discover")
-      ) {
-        response =
-          "Let's explore something new! I'll find some books outside your usual preferences.";
-        messageType = "recommendation";
-        metadata = {
-          recommendations: [
-            {
-              id: "book_discovery",
-              title: "Klara and the Sun",
-              author: "Kazuo Ishiguro",
-              description:
-                "A thought-provoking story told from the perspective of an artificial friend.",
-              interestScore: 0.75,
-              readingLevel: "Intermediate",
-              estimatedReadingTime: 300,
-            },
-          ],
-        };
-      } else if (
-        userMessage.toLowerCase().includes("buy") ||
-        userMessage.toLowerCase().includes("purchase")
-      ) {
-        response =
-          "I can help you find where to buy that book. Let me generate some purchase links for you.";
-        messageType = "purchase_links";
-        metadata = {
-          purchaseLinks: [
-            {
-              id: "amazon_link",
-              type: "amazon",
-              url: "https://amazon.com/example",
-              displayText: "Buy on Amazon",
-              format: "physical",
-              price: "$14.99",
-              availability: "available",
-            },
-            {
-              id: "search_link",
-              type: "web_search",
-              url: "https://google.com/search?q=book+title",
-              displayText: "Search for more options",
-              availability: "unknown",
-            },
-          ],
-        };
-      }
-
-      chatStore.addNoahMessage(response, messageType, metadata);
-
-      // Scroll to bottom after adding message
-      nextTick(() => scrollToBottom());
-    },
-    1500 + Math.random() * 1000,
-  ); // Random delay between 1.5-2.5 seconds
-};
+// WebSocket event handlers
+onMessage((message: ChatMessageType) => {
+  chatStore.addMessage(message);
+  nextTick(() => scrollToBottom());
+});
 
 const scrollToBottom = () => {
   if (messagesContainer.value) {
@@ -317,11 +234,59 @@ const clearError = () => {
   chatStore.setError(null);
 };
 
-// WebSocket event handlers
-onMessage((message: ChatMessageType) => {
-  chatStore.addMessage(message);
-  nextTick(() => scrollToBottom());
-});
+const handleRecommendationFeedback = (
+  bookId: string,
+  feedbackType: "interested" | "not_interested",
+) => {
+  // Send feedback to backend via WebSocket
+  if (chatStore.currentSession && isConnected.value) {
+    const feedbackMessage =
+      feedbackType === "interested"
+        ? `I'm interested in this book recommendation (ID: ${bookId})`
+        : `This book recommendation isn't for me (ID: ${bookId})`;
+
+    sendWebSocketMessage(feedbackMessage, chatStore.currentSession.sessionId, {
+      type: "feedback",
+      bookId,
+      feedbackType,
+      language: languageStore.currentLanguage,
+    });
+  }
+};
+
+const handlePurchaseInquiry = (title: string, author: string) => {
+  // Send purchase inquiry to backend via WebSocket
+  if (chatStore.currentSession && isConnected.value) {
+    const inquiryMessage = `Where can I buy "${title}" by ${author}?`;
+
+    sendWebSocketMessage(inquiryMessage, chatStore.currentSession.sessionId, {
+      type: "purchase_inquiry",
+      bookTitle: title,
+      bookAuthor: author,
+      language: languageStore.currentLanguage,
+    });
+  }
+};
+
+const activateDiscoveryMode = () => {
+  // Send discovery mode activation message
+  if (chatStore.currentSession && isConnected.value) {
+    const discoveryMessage = languageStore.isEnglish
+      ? "I'm feeling lucky! Surprise me with something new to read."
+      : "何かおすすめして！新しい本を教えて。";
+
+    // Add user message to chat
+    chatStore.addUserMessage(discoveryMessage);
+
+    sendWebSocketMessage(discoveryMessage, chatStore.currentSession.sessionId, {
+      type: "discovery_mode",
+      language: languageStore.currentLanguage,
+    });
+
+    // Scroll to bottom
+    nextTick(() => scrollToBottom());
+  }
+};
 
 // Handle streaming message chunks
 onMessageChunk((chunk) => {
@@ -331,10 +296,10 @@ onMessageChunk((chunk) => {
       chunk.content,
     );
   } else {
-    // Append new chunk to existing streaming message with a space separator
+    // Append new chunk to existing streaming message
     chatStore.appendToStreamingMessage(
       currentStreamingMessage.value.id,
-      " " + chunk.content,
+      chunk.content,
     );
   }
 
@@ -392,6 +357,9 @@ onMessageComplete((data) => {
 
 // Handle conversation history
 onConversationHistory((data) => {
+  // Clear existing messages first
+  chatStore.clearMessages();
+
   // Load historical messages
   data.messages.forEach((msg) => {
     chatStore.addMessage({
@@ -424,6 +392,17 @@ onTyping((typing) => {
 watch(connectionError, (error) => {
   if (error) {
     chatStore.setError(`Connection error: ${error}`);
+  }
+});
+
+// Watch connection status and show appropriate messages
+watch(isConnected, (connected, wasConnected) => {
+  if (connected && wasConnected === false) {
+    // Just reconnected
+    chatStore.setError(null);
+  } else if (!connected && wasConnected === true) {
+    // Just disconnected
+    chatStore.setError("Connection lost. Attempting to reconnect...");
   }
 });
 

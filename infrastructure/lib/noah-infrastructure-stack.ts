@@ -176,17 +176,31 @@ export class NoahInfrastructureStack extends cdk.Stack {
         image: ecs.ContainerImage.fromEcrRepository(ecrRepository, 'latest'),
         containerPort: 8000,
         environment: {
-          NODE_ENV: 'production',
+          // Application settings
+          APP_NAME: 'Noah Reading Agent',
+          APP_VERSION: '0.1.0',
+          DEBUG: 'false',
+          
+          // Database configuration
           DATABASE_HOST: database.instanceEndpoint.hostname,
           DATABASE_PORT: '5432',
           DATABASE_NAME: 'noah',
           DATABASE_USER: 'noah_db_admin',
-          OPENSEARCH_ENDPOINT: 'disabled-for-initial-deployment',
+          
+          // AWS configuration
+          AWS_REGION: this.region,
+          AWS_DEFAULT_REGION: this.region,
+          
+          // Cognito configuration
           COGNITO_USER_POOL_ID: userPool.userPoolId,
           COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
           COGNITO_REGION: this.region,
-          AWS_DEFAULT_REGION: this.region,
-          CORS_ORIGINS: 'http://localhost:5173,https://localhost:5173',
+          
+          // Feature flags
+          OPENSEARCH_ENDPOINT: 'disabled-for-initial-deployment',
+          
+          // CORS configuration
+          ALLOWED_ORIGINS: 'http://localhost:5173,https://localhost:5173',
         },
         secrets: {
           DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(database.secret!, 'password'),
@@ -201,6 +215,16 @@ export class NoahInfrastructureStack extends cdk.Stack {
       publicLoadBalancer: true,
       listenerPort: 80,
       healthCheckGracePeriod: cdk.Duration.seconds(60),
+    })
+
+    // Configure ALB health check to use the correct path
+    backendService.targetGroup.configureHealthCheck({
+      path: '/health',
+      healthyHttpCodes: '200',
+      interval: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(5),
+      healthyThresholdCount: 2,
+      unhealthyThresholdCount: 5,
     })
 
     // Allow backend to access database

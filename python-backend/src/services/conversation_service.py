@@ -132,7 +132,8 @@ class ConversationService:
         session_id: str,
         user_message: str,
         connection_id: str,
-        db: Session
+        db: Session,
+        metadata: Optional[Dict] = None
     ) -> None:
         """Process a user message and stream Noah's response in real-time."""
         try:
@@ -142,10 +143,11 @@ class ConversationService:
             # Send typing indicator
             await manager.send_typing_indicator(session_id, True)
 
-            # Analyze user intent and extract entities
+            # Analyze user intent and extract entities, considering metadata
             intent = await self.agent_core.analyze_intent(
                 user_message,
-                session.context
+                session.context,
+                metadata
             )
             entities = await self.agent_core.extract_entities(user_message)
 
@@ -237,6 +239,10 @@ class ConversationService:
             )
         elif intent_type == "purchase_inquiry":
             return await self._handle_and_stream_purchase_inquiry(
+                user_message, entities, session, connection_id, db
+            )
+        elif intent_type == "feedback":
+            return await self._handle_and_stream_feedback(
                 user_message, entities, session, connection_id, db
             )
         else:
@@ -447,6 +453,40 @@ class ConversationService:
             "content": response_content,
             "type": "purchase_links",
             "purchase_links": purchase_links
+        }
+
+    async def _handle_and_stream_feedback(
+        self,
+        user_message: str,
+        entities: Dict,
+        session: ConversationSession,
+        connection_id: str,
+        db: Session
+    ) -> Dict[str, Any]:
+        """Handle user feedback on recommendations with streaming."""
+        await manager.send_typing_indicator(session.session_id, False)
+
+        # Extract feedback information
+        book_id = entities.get("book_id")
+        feedback_type = entities.get("feedback_type")
+
+        # Generate appropriate response based on feedback
+        if feedback_type == "interested":
+            response_content = "Great! I'm glad you're interested in that recommendation. I'll remember your preference for similar books. Would you like me to find where you can purchase it?"
+        elif feedback_type == "not_interested":
+            response_content = "Thanks for letting me know! I'll use this feedback to improve future recommendations. What kind of books would you prefer instead?"
+        else:
+            response_content = "Thank you for your feedback! This helps me learn your preferences better."
+
+        # Stream the text response
+        await self._stream_text_response(response_content, connection_id)
+
+        # TODO: Store feedback in user profile for learning
+        # This would integrate with the user profile service to update preferences
+
+        return {
+            "content": response_content,
+            "type": "text"
         }
 
     async def _handle_and_stream_general_conversation(

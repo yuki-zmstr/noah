@@ -69,11 +69,12 @@ async def websocket_endpoint(
                     # Handle user message with streaming
                     session_id = message_data.get("sessionId")
                     content = message_data.get("content")
+                    metadata = message_data.get("metadata", {})
 
                     if session_id and content:
-                        # Process the message with streaming
+                        # Process the message with streaming, including metadata
                         await conversation_service.process_user_message_streaming(
-                            session_id, content, connection_id, db
+                            session_id, content, connection_id, db, metadata
                         )
 
                 elif message_type == "ping":

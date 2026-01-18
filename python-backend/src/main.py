@@ -34,21 +34,14 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # Health check endpoint MUST be defined before CORS middleware
-    # to avoid CORS rejecting ALB health checks
+    # Health check endpoint MUST be defined FIRST and be very simple
+    # to avoid any middleware interference with ALB health checks
     @app.get("/health")
     async def health_check():
         """Health check endpoint for load balancer."""
-        return {
-            "status": "healthy",
-            "app_name": settings.app_name,
-            "version": settings.app_version,
-            "timestamp": "2026-01-17T12:25:00.000Z",
-            "code_version": "fixed-trusted-host-v3"  # Version marker to confirm deployment
-        }
+        return {"status": "healthy"}
 
-    # Add CORS middleware
-    # Note: For production, set ALLOWED_ORIGINS env var to your frontend domain
+    # Add CORS middleware AFTER health check
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Allow all origins (ALB health checks don't send Origin header)
@@ -60,14 +53,14 @@ def create_app() -> FastAPI:
     # Add debugging middleware to log requests
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
-        # Skip logging for health checks to reduce noise
-        if request.url.path != "/health":
-            logger.info(
-                f"Request: {request.method} {request.url} from {request.client.host if request.client else 'unknown'}")
-            logger.info(f"Headers: {dict(request.headers)}")
+        # Log all requests including health checks for debugging
+        logger.info(
+            f"Request: {request.method} {request.url.path} from {request.client.host if request.client else 'unknown'}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
         response = await call_next(request)
-        if request.url.path != "/health":
-            logger.info(f"Response status: {response.status_code}")
+        
+        logger.info(f"Response status: {response.status_code}")
         return response
 
     # Note: TrustedHostMiddleware removed to allow AWS load balancer health checks

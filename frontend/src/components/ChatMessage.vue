@@ -45,6 +45,28 @@
                 <p class="text-sm text-gray-700 mt-2 line-clamp-2">
                   {{ rec.description }}
                 </p>
+
+                <!-- Feedback and Action Buttons -->
+                <div class="flex items-center space-x-2 mt-3">
+                  <button
+                    @click="handleFeedback(rec.id, 'interested')"
+                    class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                  >
+                    👍 Interested
+                  </button>
+                  <button
+                    @click="handleFeedback(rec.id, 'not_interested')"
+                    class="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  >
+                    👎 Not for me
+                  </button>
+                  <button
+                    @click="handlePurchaseInquiry(rec.title, rec.author)"
+                    class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  >
+                    🛒 Where to buy?
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -117,7 +139,17 @@ interface Props {
   message: ChatMessage;
 }
 
+interface Emits {
+  (
+    e: "feedback",
+    bookId: string,
+    feedbackType: "interested" | "not_interested",
+  ): void;
+  (e: "purchaseInquiry", title: string, author: string): void;
+}
+
 defineProps<Props>();
+const emit = defineEmits<Emits>();
 
 const formatTime = (timestamp: Date) => {
   return new Intl.DateTimeFormat("en-US", {
@@ -125,6 +157,17 @@ const formatTime = (timestamp: Date) => {
     minute: "2-digit",
     hour12: true,
   }).format(new Date(timestamp));
+};
+
+const handleFeedback = (
+  bookId: string,
+  feedbackType: "interested" | "not_interested",
+) => {
+  emit("feedback", bookId, feedbackType);
+};
+
+const handlePurchaseInquiry = (title: string, author: string) => {
+  emit("purchaseInquiry", title, author);
 };
 </script>
 

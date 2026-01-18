@@ -21,7 +21,7 @@ class AgentCoreService:
             region_name=settings.aws_region
         )
 
-    async def analyze_intent(self, message: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+    async def analyze_intent(self, message: str, context: Optional[Dict] = None, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         """Analyze user message intent using AWS Agent Core."""
         try:
             async with httpx.AsyncClient() as client:
@@ -34,6 +34,7 @@ class AgentCoreService:
                     json={
                         "message": message,
                         "context": context or {},
+                        "metadata": metadata or {},
                         "timestamp": datetime.utcnow().isoformat()
                     }
                 )
@@ -41,7 +42,7 @@ class AgentCoreService:
                 return response.json()
         except Exception as e:
             # Fallback to basic intent analysis
-            return self._fallback_intent_analysis(message)
+            return self._fallback_intent_analysis(message, metadata)
 
     async def extract_entities(self, message: str) -> Dict[str, List[str]]:
         """Extract entities from user message."""
@@ -130,9 +131,37 @@ class AgentCoreService:
                 }
             }
 
-    def _fallback_intent_analysis(self, message: str) -> Dict[str, Any]:
+    def _fallback_intent_analysis(self, message: str, metadata: Optional[Dict] = None) -> Dict[str, Any]:
         """Fallback intent analysis when AWS Agent Core is unavailable."""
         message_lower = message.lower()
+        
+        # Check metadata for explicit intent type
+        if metadata and metadata.get("type"):
+            metadata_type = metadata.get("type")
+            if metadata_type == "feedback":
+                return {
+                    "intent": "feedback",
+                    "confidence": 0.9,
+                    "entities": {
+                        "book_id": metadata.get("bookId"),
+                        "feedback_type": metadata.get("feedbackType")
+                    }
+                }
+            elif metadata_type == "discovery_mode":
+                return {
+                    "intent": "discovery_mode",
+                    "confidence": 0.9,
+                    "entities": {}
+                }
+            elif metadata_type == "purchase_inquiry":
+                return {
+                    "intent": "purchase_inquiry",
+                    "confidence": 0.9,
+                    "entities": {
+                        "book_title": metadata.get("bookTitle"),
+                        "book_author": metadata.get("bookAuthor")
+                    }
+                }
 
         # Check for purchase intent first (more specific)
         if any(word in message_lower for word in ["buy", "purchase", "get", "order", "where can i"]):
@@ -151,6 +180,12 @@ class AgentCoreService:
             return {
                 "intent": "book_recommendation",
                 "confidence": 0.7,
+                "entities": {}
+            }
+        elif any(word in message_lower for word in ["interested", "not for me", "like", "dislike"]):
+            return {
+                "intent": "feedback",
+                "confidence": 0.6,
                 "entities": {}
             }
         else:

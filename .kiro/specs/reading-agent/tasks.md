@@ -186,15 +186,15 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 
 ## Phase 5: Production Features
 
-- [ ] 10. Complete backend-frontend integration and real-time communication
-  - [ ] 10.1 Connect chat interface to backend API endpoints
+- [-] 10. Complete backend-frontend integration and real-time communication
+  - [x] 10.1 Connect chat interface to backend API endpoints
     - Replace mock responses with real API calls to conversation service
     - Implement proper WebSocket connection between frontend and backend
     - Test real-time message delivery and recommendation display
     - Add error handling for API failures and connection issues
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6_
 
-  - [ ] 10.2 Integrate recommendation delivery through chat interface
+  - [-] 10.2 Integrate recommendation delivery through chat interface
     - Connect recommendation engine to chat message flow
     - Display contextual recommendations with explanations in chat
     - Implement discovery mode activation through chat commands
@@ -237,7 +237,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - **Property 10: Content Storage and Retrieval Consistency**
     - **Validates: Requirements 6.1, 6.2, 6.4**
 
-- [ ] 13. Build preference transparency and control features
+- [~] 13. Build preference transparency and control features
   - [ ] 13.1 Complete preference dashboard in Vue.js
     - Build user interface for viewing learned preferences and explanations
     - Implement preference editing and override functionality
@@ -293,7 +293,15 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
     - Add tool integration for content processing and recommendation generation
     - _Requirements: 10.1, 10.2, 10.6, 3.1, 3.2_
 
-  - [ ]\* 15.3 Write property test for strands agent integration
+  - [ ] 15.3 Implement Strands streaming functionality for real-time responses
+    - Replace current WebSocket text chunking with Strands agent.stream_async() method
+    - Implement convert_event() function to handle Bedrock API streaming events
+    - Add support for streaming text chunks and tool usage notifications via WebSocket
+    - Integrate streaming with existing conversation service and WebSocket manager
+    - Test real-time AI response generation with proper tool visibility
+    - _Requirements: 10.1, 10.2, 10.4, 10.5_
+
+  - [ ]\* 15.4 Write property test for strands agent integration
     - **Property 20: Strands Agent Workflow Consistency**
     - **Validates: Requirements 10.3, 10.5, 13.1, 13.2**
 

@@ -1,7 +1,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import type { ChatMessage, TypingIndicator } from '@/types/chat'
+import { awsConfig } from '@/config/aws-config'
 
-export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
+export function useWebSocket() {
   const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
   const connectionError = ref<string | null>(null)
@@ -9,18 +10,32 @@ export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
 
   const connect = () => {
     try {
-      const wsUrl = `${serverUrl}/api/v1/chat/ws/${connectionId.value}`
+      // Convert HTTP endpoint to WebSocket URL
+      const apiEndpoint = awsConfig.apiEndpoint
+      const wsUrl = apiEndpoint.replace(/^http/, 'ws') + `/api/v1/chat/ws/${connectionId.value}`
+      
+      console.log('Connecting to WebSocket:', wsUrl)
       socket.value = new WebSocket(wsUrl)
 
       socket.value.onopen = () => {
         isConnected.value = true
         connectionError.value = null
-        console.log('WebSocket connected')
+        console.log('WebSocket connected to:', wsUrl)
       }
 
-      socket.value.onclose = () => {
+      socket.value.onclose = (event) => {
         isConnected.value = false
-        console.log('WebSocket disconnected')
+        console.log('WebSocket disconnected:', event.code, event.reason)
+        
+        // Attempt to reconnect after a delay if not a normal closure
+        if (event.code !== 1000) {
+          setTimeout(() => {
+            if (!isConnected.value) {
+              console.log('Attempting to reconnect...')
+              connect()
+            }
+          }, 3000)
+        }
       }
 
       socket.value.onerror = (error) => {
@@ -63,8 +78,12 @@ export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
 
   const handleMessage = (data: any) => {
     const { type } = data
+    console.log('Received WebSocket message:', type, data)
+    
     if (messageHandlers[type as keyof typeof messageHandlers]) {
       messageHandlers[type as keyof typeof messageHandlers].forEach((handler: any) => handler(data))
+    } else {
+      console.warn('Unknown message type received:', type)
     }
   }
 
@@ -77,7 +96,11 @@ export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
         timestamp: new Date().toISOString(),
         metadata
       }
+      console.log('Sending message:', payload)
       socket.value.send(JSON.stringify(payload))
+    } else {
+      console.error('Cannot send message: WebSocket not connected')
+      connectionError.value = 'Not connected to server'
     }
   }
 
@@ -114,9 +137,13 @@ export function useWebSocket(serverUrl: string = 'ws://localhost:8000') {
       const payload = {
         type: 'join_session',
         sessionId,
-        userId
+        userId,
+        timestamp: new Date().toISOString()
       }
+      console.log('Joining session:', payload)
       socket.value.send(JSON.stringify(payload))
+    } else {
+      console.error('Cannot join session: WebSocket not connected')
     }
   }
 
