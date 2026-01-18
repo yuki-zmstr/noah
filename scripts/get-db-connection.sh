@@ -46,10 +46,10 @@ SECRET_ARN=$(aws rds describe-db-instances \
 
 if [ -z "$SECRET_ARN" ]; then
     echo "⚠️  Could not find secret ARN, trying alternative method..."
-    # Try to find secret by name pattern
+    # Try to find secret by name pattern - check for Noah infrastructure secrets
     SECRET_ARN=$(aws secretsmanager list-secrets \
         --region "$REGION" \
-        --query 'SecretList[?contains(Name, `noah`) && contains(Name, `rds`)].ARN' \
+        --query 'SecretList[?contains(Name, `NoahInfrastructureStack`) || contains(Name, `noah`) && contains(Name, `rds`)].ARN' \
         --output text | head -1)
 fi
 
