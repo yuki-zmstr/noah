@@ -227,6 +227,19 @@ export class NoahInfrastructureStack extends cdk.Stack {
       unhealthyThresholdCount: 5,
     })
 
+    // Bastion Host for database access
+    const bastionHost = new ec2.BastionHostLinux(this, 'NoahBastionHost', {
+      vpc,
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.NANO),
+      machineImage: ec2.MachineImage.latestAmazonLinux2(),
+      subnetSelection: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    })
+
+    // Allow bastion host to access database
+    database.connections.allowFrom(bastionHost, ec2.Port.tcp(5432))
+
     // Allow backend to access database
     database.connections.allowFrom(backendService.service, ec2.Port.tcp(5432))
 
@@ -441,6 +454,16 @@ export class NoahInfrastructureStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ContentBucketName', {
       value: contentBucket.bucketName,
       description: 'S3 bucket for content storage',
+    })
+
+    new cdk.CfnOutput(this, 'BastionHostPublicIP', {
+      value: bastionHost.instancePublicIp,
+      description: 'Bastion Host Public IP for database access',
+    })
+
+    new cdk.CfnOutput(this, 'BastionHostInstanceId', {
+      value: bastionHost.instanceId,
+      description: 'Bastion Host Instance ID',
     })
 
     new cdk.CfnOutput(this, 'EcrRepositoryUri', {

@@ -15,3 +15,22 @@ frontend:
   cache:
     paths:
       - frontend/.npm/**/*
+backend:
+  phases:
+    build:
+      commands:
+        - echo "Backend build phase - no actions needed"
+environment:
+  variables:
+    VITE_AWS_REGION: ap-northeast-1
+    VITE_COGNITO_USER_POOL_ID: ap-northeast-1_K4gyhxpG9
+    VITE_COGNITO_CLIENT_ID: 14ivj9dtdk1c65t390g1l9vbpc
+    VITE_COGNITO_IDENTITY_POOL_ID: ap-northeast-1:af1ce951-b348-41d1-9a7a-50fceb21efd2
+    VITE_API_ENDPOINT: http://NoahIn-NoahB-oKNHtTs5iPix-286806897.ap-northeast-1.elb.amazonaws.com
+    VITE_API_BASE_URL: http://NoahIn-NoahB-oKNHtTs5iPix-286806897.ap-northeast-1.elb.amazonaws.com/api
+    VITE_ENABLE_DISCOVERY_MODE: true
+    VITE_ENABLE_MULTILINGUAL: true
+    VITE_ENABLE_PURCHASE_LINKS: true
+    VITE_DEFAULT_LANGUAGE: english
+    VITE_MAX_MESSAGE_LENGTH: 2000
+    VITE_TYPING_INDICATOR_DELAY: 1000
