@@ -52,7 +52,7 @@ from src.models import (
 
 # Import monitoring and logging services
 from src.services.logging_config import setup_logging
-from src.services.monitoring_service import monitoring_service
+from src.services.monitoring_service import monitoring_service, AlertLevel
 from src.middleware.monitoring_middleware import MonitoringMiddleware
 
 # Setup enhanced logging
@@ -160,7 +160,7 @@ def create_app() -> FastAPI:
             
             monitoring_service.create_alert(
                 name="DatabaseInitializationFailure",
-                level=monitoring_service.AlertLevel.ERROR,
+                level=AlertLevel.ERROR,
                 message=f"Failed to initialize database: {str(e)}",
                 metadata={"error_type": type(e).__name__}
             )
@@ -195,7 +195,7 @@ def create_app() -> FastAPI:
                     logger.warning(f"Strands configuration issues: {validation['errors']}")
                     monitoring_service.create_alert(
                         name="StrandsConfigurationIssue",
-                        level=monitoring_service.AlertLevel.WARNING,
+                        level=AlertLevel.WARNING,
                         message=f"Strands configuration validation failed: {validation['errors']}",
                         metadata={"errors": validation['errors']}
                     )
@@ -219,7 +219,7 @@ def create_app() -> FastAPI:
             
             monitoring_service.create_alert(
                 name="StrandsInitializationFailure",
-                level=monitoring_service.AlertLevel.WARNING,
+                level=AlertLevel.WARNING,
                 message=f"Failed to initialize Strands agents: {str(e)}",
                 metadata={"error_type": type(e).__name__}
             )

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from src.services.monitoring_service import monitoring_service
+from src.services.monitoring_service import monitoring_service, AlertLevel, MetricType
 from src.services.logging_config import performance_logger
 
 
@@ -123,7 +123,7 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
             # Create alert for server errors
             monitoring_service.create_alert(
                 name="HTTPError",
-                level=monitoring_service.AlertLevel.ERROR,
+                level=AlertLevel.ERROR,
                 message=f"HTTP request failed: {request.method} {request.url.path} - {str(e)}",
                 metadata={
                     "request_id": request_id,
@@ -240,7 +240,7 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
                 "Path": path_normalized,
                 "StatusCode": str(response.status_code)
             },
-            metric_type=monitoring_service.MetricType.TIMER
+            metric_type=MetricType.TIMER
         )
         
         # Track status codes
@@ -259,7 +259,7 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
         if duration_ms > 5000:  # 5 seconds
             monitoring_service.create_alert(
                 name="SlowHTTPRequest",
-                level=monitoring_service.AlertLevel.WARNING,
+                level=AlertLevel.WARNING,
                 message=f"Slow HTTP request: {request.method} {request.url.path} took {duration_ms:.2f}ms",
                 metadata={
                     "method": request.method,
@@ -295,7 +295,7 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
             
             monitoring_service.create_alert(
                 name="HTTPServerError",
-                level=monitoring_service.AlertLevel.ERROR,
+                level=AlertLevel.ERROR,
                 message=f"HTTP server error: {request.method} {request.url.path} returned {response.status_code}",
                 metadata={
                     "method": request.method,

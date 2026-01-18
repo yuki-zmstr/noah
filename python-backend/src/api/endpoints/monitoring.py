@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
-from src.services.monitoring_service import monitoring_service
+from src.services.monitoring_service import monitoring_service, AlertLevel
 from src.services.logging_config import performance_logger
 from src.database import get_db
 from sqlalchemy.orm import Session
@@ -243,13 +243,13 @@ async def test_alert(
     try:
         # Map string to AlertLevel enum
         level_mapping = {
-            "info": monitoring_service.AlertLevel.INFO,
-            "warning": monitoring_service.AlertLevel.WARNING,
-            "error": monitoring_service.AlertLevel.ERROR,
-            "critical": monitoring_service.AlertLevel.CRITICAL
+            "info": AlertLevel.INFO,
+            "warning": AlertLevel.WARNING,
+            "error": AlertLevel.ERROR,
+            "critical": AlertLevel.CRITICAL
         }
         
-        alert_level = level_mapping.get(level.lower(), monitoring_service.AlertLevel.INFO)
+        alert_level = level_mapping.get(level.lower(), AlertLevel.INFO)
         
         # Create test alert
         monitoring_service.create_alert(
