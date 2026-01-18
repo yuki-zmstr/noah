@@ -24,6 +24,10 @@ export function useHttpStreaming() {
       isStreaming.value = true
       streamError.value = null
 
+      // Create AbortController for timeout handling
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 600000) // 10 minutes timeout
+
       const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/chat/stream`, {
         method: 'POST',
         headers: {
@@ -34,8 +38,11 @@ export function useHttpStreaming() {
           session_id: sessionId,
           user_id: userId,
           metadata
-        })
+        }),
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)

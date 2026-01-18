@@ -264,27 +264,68 @@ class ConversationService:
         db: Session
     ) -> Dict[str, Any]:
         """Handle book recommendation requests."""
-        # Mock recommendations for now (to be replaced with actual recommendation engine)
-        recommendations = [
-            {
-                "id": "book_1",
-                "title": "The Seven Husbands of Evelyn Hugo",
-                "author": "Taylor Jenkins Reid",
-                "description": "A captivating novel about a reclusive Hollywood icon who finally decides to tell her story.",
-                "interestScore": 0.92,
-                "readingLevel": "Intermediate",
-                "estimatedReadingTime": 420
-            },
-            {
-                "id": "book_2",
-                "title": "Educated",
-                "author": "Tara Westover",
-                "description": "A powerful memoir about education, family, and the struggle between loyalty and independence.",
-                "interestScore": 0.88,
-                "readingLevel": "Advanced",
-                "estimatedReadingTime": 380
-            }
-        ]
+        # Use real recommendation engine
+        from src.services.recommendation_engine import contextual_recommendation_engine
+        
+        try:
+            # Get user ID from session or use default
+            user_id = session.user_id if hasattr(session, 'user_id') else "default_user"
+            
+            # Generate real recommendations
+            raw_recommendations = await contextual_recommendation_engine.generate_contextual_recommendations(
+                user_id=user_id,
+                limit=5,
+                language="english",
+                db=db
+            )
+            
+            # Convert to expected format
+            recommendations = []
+            for rec in raw_recommendations:
+                recommendations.append({
+                    "id": rec["content_id"],
+                    "title": rec["title"],
+                    "author": rec["metadata"].get("author", "Unknown Author"),
+                    "description": rec["metadata"].get("genre", "Fiction"),
+                    "interestScore": round(rec["recommendation_score"], 2),
+                    "readingLevel": rec["metadata"].get("difficulty_level", "Intermediate").title(),
+                    "estimatedReadingTime": rec["metadata"].get("estimated_reading_time", 300),
+                    "genre": rec["metadata"].get("genre", "Fiction"),
+                    "recommendation_reason": rec.get("recommendation_reason", "Recommended based on your preferences")
+                })
+            
+            # Fallback if no recommendations found
+            if not recommendations:
+                recommendations = [
+                    {
+                        "id": "fallback_1",
+                        "title": "Popular Fiction Selection",
+                        "author": "Various Authors",
+                        "description": "A curated selection of popular fiction",
+                        "interestScore": 0.75,
+                        "readingLevel": "Intermediate",
+                        "estimatedReadingTime": 300,
+                        "genre": "Fiction",
+                        "recommendation_reason": "Popular among readers"
+                    }
+                ]
+                
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {e}")
+            # Fallback recommendations on error
+            recommendations = [
+                {
+                    "id": "error_fallback",
+                    "title": "Reading Recommendation",
+                    "author": "System",
+                    "description": "We're working on personalized recommendations for you",
+                    "interestScore": 0.5,
+                    "readingLevel": "Intermediate",
+                    "estimatedReadingTime": 300,
+                    "genre": "General",
+                    "recommendation_reason": "System recommendation"
+                }
+            ]
 
         response_content = await self.agent_core.generate_response(
             user_message,
@@ -307,18 +348,71 @@ class ConversationService:
         db: Session
     ) -> Dict[str, Any]:
         """Handle discovery mode requests."""
-        # Mock discovery recommendation
-        discovery_recommendation = [
-            {
-                "id": "book_discovery",
-                "title": "Klara and the Sun",
-                "author": "Kazuo Ishiguro",
-                "description": "A thought-provoking story told from the perspective of an artificial friend.",
-                "interestScore": 0.75,
-                "readingLevel": "Intermediate",
-                "estimatedReadingTime": 300
-            }
-        ]
+        # Use real discovery engine
+        from src.services.discovery_engine import discovery_engine
+        
+        try:
+            # Get user ID from session or use default
+            user_id = session.user_id if hasattr(session, 'user_id') else "default_user"
+            
+            # Generate real discovery recommendations
+            raw_discovery = await discovery_engine.generate_discovery_recommendations(
+                user_id=user_id,
+                limit=3,
+                language="english",
+                db=db
+            )
+            
+            # Convert to expected format
+            discovery_recommendation = []
+            for rec in raw_discovery:
+                discovery_recommendation.append({
+                    "id": rec["content_id"],
+                    "title": rec["title"],
+                    "author": rec["metadata"].get("author", "Unknown Author"),
+                    "description": rec.get("discovery_reason", "A serendipitous discovery for you"),
+                    "interestScore": round(rec["divergence_score"], 2),
+                    "readingLevel": rec["metadata"].get("difficulty_level", "Intermediate").title(),
+                    "estimatedReadingTime": rec["metadata"].get("estimated_reading_time", 300),
+                    "genre": rec["metadata"].get("genre", "Fiction"),
+                    "is_discovery": True,
+                    "discovery_reason": rec.get("discovery_reason", "Explores new territory for you")
+                })
+            
+            # Fallback if no discovery recommendations found
+            if not discovery_recommendation:
+                discovery_recommendation = [
+                    {
+                        "id": "discovery_fallback",
+                        "title": "Literary Discovery",
+                        "author": "Various Authors",
+                        "description": "A curated discovery selection",
+                        "interestScore": 0.65,
+                        "readingLevel": "Intermediate",
+                        "estimatedReadingTime": 300,
+                        "genre": "Literary Fiction",
+                        "is_discovery": True,
+                        "discovery_reason": "Expands your reading horizons"
+                    }
+                ]
+                
+        except Exception as e:
+            logger.error(f"Error generating discovery recommendations: {e}")
+            # Fallback discovery recommendation on error
+            discovery_recommendation = [
+                {
+                    "id": "discovery_error_fallback",
+                    "title": "Discovery Mode",
+                    "author": "System",
+                    "description": "We're working on discovery recommendations for you",
+                    "interestScore": 0.5,
+                    "readingLevel": "Intermediate",
+                    "estimatedReadingTime": 300,
+                    "genre": "General",
+                    "is_discovery": True,
+                    "discovery_reason": "System discovery"
+                }
+            ]
 
         response_content = await self.agent_core.generate_response(
             user_message,

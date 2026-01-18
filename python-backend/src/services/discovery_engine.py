@@ -729,12 +729,13 @@ class DiscoveryModeEngine:
 
     async def _get_all_content_types(self, db: Session) -> Set[str]:
         """Get all available content types."""
-        result = db.query(ContentItem.content_metadata).distinct().all()
+        # Query content items and extract content types from metadata
+        content_items = db.query(ContentItem).all()
 
         content_types = set()
-        for row in result:
-            if row.content_metadata and "content_type" in row.content_metadata:
-                content_types.add(row.content_metadata["content_type"])
+        for item in content_items:
+            if item.content_metadata and "content_type" in item.content_metadata:
+                content_types.add(item.content_metadata["content_type"])
 
         return content_types
 

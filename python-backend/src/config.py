@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     performance_alert_threshold_ms: float = 5000.0  # 5 seconds
     error_alert_enabled: bool = True
 
+    # Timeout Configuration
+    request_timeout: int = 300  # 5 minutes for complex requests
+    stream_timeout: int = 600   # 10 minutes for streaming
+    ai_model_timeout: int = 120 # 2 minutes for AI model calls
+    database_timeout: int = 30  # 30 seconds for database operations
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse allowed origins from comma-separated string."""

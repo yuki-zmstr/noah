@@ -118,6 +118,9 @@ async def stream_chat_response(
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "Content-Type": "text/event-stream",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
             }
         )
         
