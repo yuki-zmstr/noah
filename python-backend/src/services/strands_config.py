@@ -18,7 +18,6 @@ class StrandsConfig(BaseModel):
     
     # API configuration
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
-    anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API key")
     
     # Tool configuration
     enable_recommendations: bool = Field(default=True, description="Enable recommendation tool")
@@ -46,11 +45,9 @@ def get_strands_config() -> StrandsConfig:
     
     # Get API keys from environment or settings
     openai_key = os.getenv("OPENAI_API_KEY") or getattr(settings, "openai_api_key", None)
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY") or getattr(settings, "anthropic_api_key", None)
     
     config_data = {
         "openai_api_key": openai_key,
-        "anthropic_api_key": anthropic_key,
     }
     
     # Add any environment-specific overrides
@@ -71,7 +68,7 @@ def validate_strands_config(config: StrandsConfig) -> Dict[str, Any]:
     }
     
     # Check API keys
-    if not config.openai_api_key and not config.anthropic_api_key:
+    if not config.openai_api_key:
         validation_results["errors"].append("No API keys configured for Strands agents")
         validation_results["valid"] = False
     
@@ -107,8 +104,7 @@ def validate_strands_config(config: StrandsConfig) -> Dict[str, Any]:
         "streaming_enabled": config.streaming_enabled,
         "cache_enabled": config.cache_enabled,
         "api_keys_configured": {
-            "openai": bool(config.openai_api_key),
-            "anthropic": bool(config.anthropic_api_key)
+            "openai": bool(config.openai_api_key)
         }
     }
     

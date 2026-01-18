@@ -1,4 +1,4 @@
-"""AI Response Generation Service using OpenAI and Anthropic APIs."""
+"""AI Response Generation Service using OpenAI API."""
 
 import logging
 import json
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class AIResponseService:
-    """Service for generating dynamic AI responses using OpenAI/Anthropic APIs."""
+    """Service for generating dynamic AI responses using OpenAI API."""
 
     def __init__(self):
         """Initialize AI response service with OpenAI."""

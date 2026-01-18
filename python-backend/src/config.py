@@ -40,9 +40,6 @@ class Settings(BaseSettings):
     # OpenAI API
     openai_api_key: str = ""
 
-    # Anthropic API
-    anthropic_api_key: str = ""
-
     # Strands Agents Configuration
     strands_enabled: bool = True
     strands_agent_model: str = "gpt-4o-mini"

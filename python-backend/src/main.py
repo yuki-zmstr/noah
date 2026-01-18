@@ -37,7 +37,6 @@ except ImportError:
                 return response
 import logging
 import asyncio
-import atexit
 
 from src.config import settings
 from src.database import engine, Base
@@ -50,10 +49,8 @@ from src.models import (
     ConversationSession, ConversationMessage, ConversationHistory
 )
 
-# Import monitoring and logging services
+# Import logging services
 from src.services.logging_config import setup_logging
-from src.services.monitoring_service import monitoring_service, AlertLevel
-from src.middleware.monitoring_middleware import MonitoringMiddleware
 
 # Setup enhanced logging
 setup_logging()
@@ -83,10 +80,7 @@ def create_app() -> FastAPI:
         app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_hosts)
         logger.info(f"ProxyHeadersMiddleware enabled with trusted_hosts: {settings.trusted_hosts}")
 
-    # Add monitoring middleware AFTER proxy headers
-    app.add_middleware(MonitoringMiddleware)
-
-    # Add CORS middleware AFTER monitoring
+    # Add CORS middleware
     # Use specific origins when credentials are needed for security
     cors_origins = settings.cors_origins_list if settings.cors_origins_list else ["*"]
     
@@ -117,14 +111,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         """Initialize database and other services on startup."""
-        logger.info("Starting Noah Reading Agent with enhanced monitoring...")
-
-        # Initialize monitoring
-        monitoring_service.record_metric(
-            name="Application.Startup",
-            value=1,
-            dimensions={"Version": settings.app_version}
-        )
+        logger.info("Starting Noah Reading Agent...")
 
         # Create database tables - don't fail startup if DB is unavailable
         # This allows health checks to pass while DB connections retry
@@ -140,30 +127,9 @@ def create_app() -> FastAPI:
             ]
             logger.info(f"Registered models: {', '.join(registered_models)}")
             
-            # Track successful database initialization
-            monitoring_service.record_metric(
-                name="Database.Initialization",
-                value=1,
-                dimensions={"Status": "success"}
-            )
-            
         except Exception as e:
             logger.error(f"Error creating database tables: {e}")
             logger.warning("Application starting without database connection. DB operations will fail until connection is established.")
-            
-            # Track database initialization failure
-            monitoring_service.record_metric(
-                name="Database.Initialization",
-                value=1,
-                dimensions={"Status": "failure", "ErrorType": type(e).__name__}
-            )
-            
-            monitoring_service.create_alert(
-                name="DatabaseInitializationFailure",
-                level=AlertLevel.ERROR,
-                message=f"Failed to initialize database: {str(e)}",
-                metadata={"error_type": type(e).__name__}
-            )
             # Don't raise - allow app to start for health checks
 
         # Initialize and log Strands agents configuration
@@ -186,82 +152,16 @@ def create_app() -> FastAPI:
                 validation = validate_strands_config(strands_config)
                 if validation["valid"]:
                     logger.info("Strands configuration validation passed")
-                    monitoring_service.record_metric(
-                        name="Strands.Initialization",
-                        value=1,
-                        dimensions={"Status": "success"}
-                    )
                 else:
                     logger.warning(f"Strands configuration issues: {validation['errors']}")
-                    monitoring_service.create_alert(
-                        name="StrandsConfigurationIssue",
-                        level=AlertLevel.WARNING,
-                        message=f"Strands configuration validation failed: {validation['errors']}",
-                        metadata={"errors": validation['errors']}
-                    )
             else:
                 logger.info("Using AWS Agent Core fallback for conversation processing")
-                monitoring_service.record_metric(
-                    name="Strands.Initialization",
-                    value=1,
-                    dimensions={"Status": "fallback"}
-                )
                 
         except Exception as e:
             logger.error(f"Error initializing Strands agents: {e}")
             logger.info("Falling back to AWS Agent Core for conversation processing")
-            
-            monitoring_service.record_metric(
-                name="Strands.Initialization",
-                value=1,
-                dimensions={"Status": "failure", "ErrorType": type(e).__name__}
-            )
-            
-            monitoring_service.create_alert(
-                name="StrandsInitializationFailure",
-                level=AlertLevel.WARNING,
-                message=f"Failed to initialize Strands agents: {str(e)}",
-                metadata={"error_type": type(e).__name__}
-            )
 
-        logger.info("Noah Reading Agent startup completed with monitoring enabled")
-
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        """Clean up resources on shutdown."""
-        logger.info("Shutting down Noah Reading Agent...")
-        
-        # Flush any remaining metrics
-        try:
-            monitoring_service.flush_metrics()
-            logger.info("Final metrics flush completed")
-        except Exception as e:
-            logger.error(f"Error flushing metrics on shutdown: {e}")
-        
-        # Record shutdown metric
-        monitoring_service.record_metric(
-            name="Application.Shutdown",
-            value=1,
-            dimensions={"Version": settings.app_version}
-        )
-        
-        logger.info("Noah Reading Agent shutdown completed")
-
-    # Setup periodic metrics flushing
-    async def periodic_metrics_flush():
-        """Periodically flush metrics to CloudWatch."""
-        while True:
-            try:
-                await asyncio.sleep(300)  # Flush every 5 minutes
-                monitoring_service.flush_metrics()
-                logger.debug("Periodic metrics flush completed")
-            except Exception as e:
-                logger.error(f"Error in periodic metrics flush: {e}")
-
-    # Start background task for metrics flushing
-    @app.on_event("startup")
-    async def start_background_tasks():
-        asyncio.create_task(periodic_metrics_flush())
+        logger.info("Noah Reading Agent startup completed")
 
     @app.get("/")
     async def root():
@@ -270,8 +170,7 @@ def create_app() -> FastAPI:
             "message": "Noah Reading Agent API",
             "version": settings.app_version,
             "docs_url": "/docs" if settings.debug else "Documentation disabled in production",
-            "health_check": "/health",
-            "monitoring": "/api/v1/monitoring/health"
+            "health_check": "/health"
         }
 
     @app.get("/api/debug/headers")
@@ -311,8 +210,7 @@ def create_app() -> FastAPI:
                 "strands_agents": settings.strands_enabled,
                 "multilingual_support": True,
                 "discovery_mode": True,
-                "streaming_responses": True,
-                "monitoring": True
+                "streaming_responses": True
             },
             "agent_config": {
                 "strands_enabled": settings.strands_enabled,
@@ -321,19 +219,13 @@ def create_app() -> FastAPI:
             }
         }
 
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """Clean up resources on shutdown."""
+        logger.info("Shutting down Noah Reading Agent...")
+        logger.info("Noah Reading Agent shutdown completed")
+
     return app
-
-
-# Setup cleanup on exit
-def cleanup_on_exit():
-    """Cleanup function to run on application exit."""
-    try:
-        monitoring_service.flush_metrics()
-        logger.info("Final cleanup completed")
-    except Exception as e:
-        logger.error(f"Error during cleanup: {e}")
-
-atexit.register(cleanup_on_exit)
 
 
 # Create the app instance

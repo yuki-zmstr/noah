@@ -101,7 +101,7 @@ This implementation plan creates Noah, a conversational reading agent using Vue.
 
 - [x] 5. Replace hardcoded responses with dynamic AI generation
   - [x] 5.1 Implement proper AI response generation
-    - Replace fallback responses with OpenAI/Anthropic API integration
+    - Replace fallback responses with OpenAI API integration
     - Create dynamic response templates based on user context and intent
     - Implement conversation memory and context awareness
     - Add personality and tone consistency for Noah character

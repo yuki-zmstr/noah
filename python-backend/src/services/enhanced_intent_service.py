@@ -5,7 +5,6 @@ import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import openai
-import anthropic
 
 from src.config import settings
 
