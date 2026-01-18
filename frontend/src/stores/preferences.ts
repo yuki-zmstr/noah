@@ -8,6 +8,7 @@ import type {
   PreferenceEvolution
 } from '@/types/preferences'
 import { preferenceUpdateService, type PreferenceUpdateImpact } from '@/services/preferenceUpdateService'
+import { awsConfig } from '@/config/aws-config'
 
 export const usePreferencesStore = defineStore('preferences', () => {
   // State
@@ -55,7 +56,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await fetch(`/api/v1/preferences/${userId}/transparency`)
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/preferences/${userId}/transparency`)
       if (!response.ok) {
         throw new Error(`Failed to fetch transparency data: ${response.statusText}`)
       }
@@ -75,7 +76,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await fetch(`/api/v1/preferences/${userId}/evolution`)
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/preferences/${userId}/evolution`)
       if (!response.ok) {
         throw new Error(`Failed to fetch evolution data: ${response.statusText}`)
       }
@@ -94,7 +95,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await fetch(`/api/v1/preferences/${userId}/preferences`, {
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/preferences/${userId}/preferences`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +130,7 @@ export const usePreferencesStore = defineStore('preferences', () => {
       isLoading.value = true
       error.value = null
 
-      const response = await fetch(`/api/v1/preferences/${userId}/reading-levels`, {
+      const response = await fetch(`${awsConfig.apiEndpoint}/api/v1/preferences/${userId}/reading-levels`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
