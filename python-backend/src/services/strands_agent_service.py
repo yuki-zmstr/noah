@@ -266,13 +266,38 @@ Use these tools when appropriate to provide the best possible reading assistance
     def _convert_event(self, event) -> dict | None:
         """Convert Strands events to frontend-compatible JSON format."""
         try:
-            if not hasattr(event, 'get'):
-                return None
+            # Log raw event for debugging
+            logger.debug(f"Processing event: {type(event)} - {event}")
             
-            inner_event = event.get('event')
-            if not inner_event:
-                return None
+            # Handle different event formats
+            if isinstance(event, dict):
+                # Direct dictionary event
+                inner_event = event.get('event')
+                if inner_event:
+                    return self._process_inner_event(inner_event)
+                
+                # Check if this is already a processed event
+                if event.get('type') == 'text' and 'data' in event:
+                    return event
+                    
+            elif hasattr(event, 'get'):
+                # Object with get method
+                inner_event = event.get('event')
+                if inner_event:
+                    return self._process_inner_event(inner_event)
             
+            # Handle raw string content (fallback)
+            elif isinstance(event, str) and event.strip():
+                return {'type': 'text', 'data': event}
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error converting event: {e}, event: {event}")
+            return None
+    
+    def _process_inner_event(self, inner_event) -> dict | None:
+        """Process the inner event structure."""
+        try:
             # Detect text deltas
             content_block_delta = inner_event.get('contentBlockDelta')
             if content_block_delta:
@@ -316,6 +341,11 @@ Use these tools when appropriate to provide the best possible reading assistance
                 context_message += f"Metadata: {metadata}\n"
             context_message += f"User message: {user_message}"
             
+            # Track content to prevent duplicates
+            accumulated_content = ""
+            last_chunk_time = 0
+            duplicate_threshold = 0.1  # 100ms threshold for duplicate detection
+            
             # Stream response from Noah agent
             async for chunk in self.noah_agent.stream_async(context_message):
                 # Convert the raw Strands event to a clean format
@@ -323,16 +353,41 @@ Use these tools when appropriate to provide the best possible reading assistance
                 
                 if converted_event:
                     if converted_event['type'] == 'text':
+                        content = converted_event['data']
+                        current_time = datetime.utcnow().timestamp()
+                        
+                        # Skip empty content
+                        if not content or not content.strip():
+                            continue
+                        
+                        # Check if this content is already part of what we've sent
+                        if content in accumulated_content:
+                            logger.debug(f"Skipping duplicate content: {content}")
+                            continue
+                        
+                        # Check for rapid duplicates (same content within threshold)
+                        if (current_time - last_chunk_time) < duplicate_threshold:
+                            if content == getattr(self, '_last_content', ''):
+                                logger.debug(f"Skipping rapid duplicate: {content}")
+                                continue
+                        
+                        # Update tracking
+                        accumulated_content += content
+                        self._last_content = content
+                        last_chunk_time = current_time
+                        
                         yield {
                             "type": "content_chunk",
-                            "content": converted_event['data'],
+                            "content": content,
                             "is_final": False,
                             "tool_calls": [],
                             "timestamp": datetime.utcnow().isoformat()
                         }
+                        
                     elif converted_event['type'] == 'tool_use':
                         # Log tool usage but don't yield it as content
                         logger.info(f"Tool being used: {converted_event['tool_name']}")
+                        
                     elif converted_event['type'] == 'complete':
                         yield {
                             "type": "content_chunk",
@@ -341,6 +396,7 @@ Use these tools when appropriate to provide the best possible reading assistance
                             "tool_calls": [],
                             "timestamp": datetime.utcnow().isoformat()
                         }
+                        break
                 
         except Exception as e:
             logger.error(f"Error streaming conversation with Strands agent: {e}")
