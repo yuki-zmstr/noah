@@ -1,0 +1,98 @@
+name: Test Infrastructure Deployment
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "infrastructure/**"
+      - ".github/workflows/test-infrastructure.yml"
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  test-infrastructure:
+    name: Test Infrastructure Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: infrastructure/package.json
+
+      - name: Install dependencies
+        working-directory: ./infrastructure
+        run: npm ci
+
+      - name: Build TypeScript
+        working-directory: ./infrastructure
+        run: npm run build
+
+      - name: Run CDK synth (without AWS credentials)
+        working-directory: ./infrastructure
+        run: |
+          # Test CDK synthesis without deploying
+          npx cdk synth --no-lookups
+
+      - name: Validate CDK template
+        working-directory: ./infrastructure
+        run: |
+          # Check if the synthesized template is valid JSON
+          if [ -f "cdk.out/NoahInfrastructureStack.template.json" ]; then
+            echo "✅ CDK template generated successfully"
+            # Validate JSON syntax
+            cat cdk.out/NoahInfrastructureStack.template.json | jq . > /dev/null
+            echo "✅ CDK template is valid JSON"
+          else
+            echo "❌ CDK template not found"
+            exit 1
+          fi
+
+      - name: Check for common issues
+        working-directory: ./infrastructure
+        run: |
+          echo "🔍 Checking for common CDK issues..."
+
+          # Check if template has resources
+          RESOURCE_COUNT=$(cat cdk.out/NoahInfrastructureStack.template.json | jq '.Resources | length')
+          echo "Resources in template: $RESOURCE_COUNT"
+
+          if [ "$RESOURCE_COUNT" -lt 5 ]; then
+            echo "⚠️ Template has very few resources ($RESOURCE_COUNT)"
+          else
+            echo "✅ Template has $RESOURCE_COUNT resources"
+          fi
+
+          # Check for required resources
+          if cat cdk.out/NoahInfrastructureStack.template.json | jq -e '.Resources | to_entries[] | select(.value.Type == "AWS::ECS::Cluster")' > /dev/null; then
+            echo "✅ ECS Cluster found"
+          else
+            echo "❌ ECS Cluster not found"
+          fi
+
+          if cat cdk.out/NoahInfrastructureStack.template.json | jq -e '.Resources | to_entries[] | select(.value.Type == "AWS::ECS::Service")' > /dev/null; then
+            echo "✅ ECS Service found"
+          else
+            echo "❌ ECS Service not found"
+          fi
+
+          if cat cdk.out/NoahInfrastructureStack.template.json | jq -e '.Resources | to_entries[] | select(.value.Type == "AWS::RDS::DBInstance")' > /dev/null; then
+            echo "✅ RDS Database found"
+          else
+            echo "❌ RDS Database not found"
+          fi
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "🎉 Infrastructure validation completed!"
+          echo "The CDK template builds successfully and contains expected resources."

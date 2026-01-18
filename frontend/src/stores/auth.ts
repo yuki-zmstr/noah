@@ -74,6 +74,10 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
   }
 
+  const setError = (message: string) => {
+    error.value = message
+  }
+
   return {
     // State
     user,
@@ -89,6 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     initializeAuth,
-    clearError
+    clearError,
+    setError
   }
 })

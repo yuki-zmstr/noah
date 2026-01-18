@@ -15,7 +15,8 @@ The authentication system has been implemented with the following components:
    - Creates consistent user IDs based on email
 
 2. **Login Form** (`frontend/src/components/LoginForm.vue`)
-   - Simple email/password login interface
+   - Simple email/password login interface with sign-up toggle
+   - Sign-up mode adds a confirm password field
    - Clean, modern design with Noah branding (circular "N" logo)
    - Loading states and error handling
    - Demo credentials note for testing
@@ -60,6 +61,8 @@ The backend already supports user-specific conversations:
 ### Authentication Features
 
 - ✅ Simple email/password login
+- ✅ Sign-up mode with confirm password validation
+- ✅ Toggle between sign-in and sign-up modes
 - ✅ Session persistence with localStorage
 - ✅ Automatic authentication on app startup
 - ✅ Route guards for protected pages

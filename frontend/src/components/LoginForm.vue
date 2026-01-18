@@ -12,7 +12,7 @@
           </div>
         </div>
         <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Sign in to Noah
+          {{ isSignUp ? "Create your Noah account" : "Sign in to Noah" }}
         </h2>
         <p class="mt-2 text-center text-sm text-gray-600">
           Your AI reading companion
@@ -42,10 +42,29 @@
               v-model="password"
               name="password"
               type="password"
-              autocomplete="current-password"
+              :autocomplete="isSignUp ? 'new-password' : 'current-password'"
+              required
+              :class="[
+                'appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm',
+                !isSignUp ? 'rounded-b-md' : '',
+              ]"
+              placeholder="Password"
+              :disabled="isLoading"
+            />
+          </div>
+          <div v-if="isSignUp">
+            <label for="confirmPassword" class="sr-only"
+              >Confirm password</label
+            >
+            <input
+              id="confirmPassword"
+              v-model="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              autocomplete="new-password"
               required
               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-              placeholder="Password"
+              placeholder="Confirm password"
               :disabled="isLoading"
             />
           </div>
@@ -77,7 +96,9 @@
         <div>
           <button
             type="submit"
-            :disabled="isLoading || !email || !password"
+            :disabled="
+              isLoading || !email || !password || (isSignUp && !confirmPassword)
+            "
             class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span
@@ -105,13 +126,33 @@
                 ></path>
               </svg>
             </span>
-            {{ isLoading ? "Signing in..." : "Sign in" }}
+            {{
+              isLoading
+                ? isSignUp
+                  ? "Creating account..."
+                  : "Signing in..."
+                : isSignUp
+                  ? "Create account"
+                  : "Sign in"
+            }}
           </button>
         </div>
 
-        <div class="text-center">
-          <p class="text-sm text-gray-600">
-            Demo credentials: any email and password
+        <div class="text-center space-y-2">
+          <button
+            type="button"
+            @click="toggleMode"
+            class="text-sm text-blue-600 hover:text-blue-500 font-medium"
+          >
+            {{
+              isSignUp
+                ? "Already have an account? Sign in"
+                : "Don't have an account? Sign up"
+            }}
+          </button>
+
+          <p class="text-xs text-gray-500">
+            Demo mode: any email and password will work
           </p>
         </div>
       </form>
@@ -129,12 +170,36 @@ const router = useRouter();
 const authStore = useAuthStore();
 const { isLoading, error } = storeToRefs(authStore);
 
+const isSignUp = ref(false);
 const email = ref("");
 const password = ref("");
+const confirmPassword = ref("");
+
+const toggleMode = () => {
+  isSignUp.value = !isSignUp.value;
+  // Clear form when switching modes
+  email.value = "";
+  password.value = "";
+  confirmPassword.value = "";
+  authStore.clearError();
+};
 
 const handleSubmit = async () => {
   try {
-    await authStore.login(email.value, password.value);
+    if (isSignUp.value) {
+      // Validate passwords match
+      if (password.value !== confirmPassword.value) {
+        authStore.setError("Passwords do not match");
+        return;
+      }
+
+      // Sign up (same as login in demo mode)
+      await authStore.login(email.value, password.value);
+    } else {
+      // Sign in
+      await authStore.login(email.value, password.value);
+    }
+
     router.push("/");
   } catch (err) {
     // Error is handled by the store

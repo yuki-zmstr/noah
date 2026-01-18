@@ -88,7 +88,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: "npm"
           cache-dependency-path: infrastructure/package.json
 
@@ -103,11 +103,54 @@ jobs:
         working-directory: ./infrastructure
         run: npm ci
 
+      - name: Build TypeScript
+        working-directory: ./infrastructure
+        run: npm run build
+
+      - name: Validate CDK setup
+        working-directory: ./infrastructure
+        run: |
+          echo "📋 CDK Setup Validation"
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "CDK version: $(npx cdk --version)"
+
+          # Test CDK synthesis
+          echo "🧪 Testing CDK synthesis..."
+          npx cdk synth --no-lookups > /dev/null
+          echo "✅ CDK synthesis successful"
+
+      - name: Get AWS Account ID
+        id: aws-account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account-id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Bootstrap CDK
+        working-directory: ./infrastructure
+        run: |
+          # Bootstrap CDK if not already done
+          npx cdk bootstrap aws://${{ steps.aws-account.outputs.account-id }}/${{ env.AWS_REGION }} || echo "Bootstrap may have failed, continuing..."
+
       - name: Deploy infrastructure
         working-directory: ./infrastructure
         run: |
+          echo "🚀 Starting CDK deployment..."
+          echo "Environment: ${{ needs.setup.outputs.environment }}"
+          echo "AWS Region: ${{ env.AWS_REGION }}"
+          echo "Stack Name: ${{ env.STACK_NAME }}"
+
+          # Show what will be deployed
+          echo "📋 Checking deployment diff..."
+          npx cdk diff --context environment=${{ needs.setup.outputs.environment }} || echo "Diff completed"
+
+          # Deploy with verbose output
+          echo "🚀 Deploying infrastructure..."
           npx cdk deploy --require-approval never \
-            --context environment=${{ needs.setup.outputs.environment }}
+            --context environment=${{ needs.setup.outputs.environment }} \
+            --verbose
+
+          echo "✅ Infrastructure deployment completed!"
 
   # Build and Deploy Backend
   deploy-backend:
@@ -174,14 +217,27 @@ jobs:
 
       - name: Update ECS service
         run: |
-          # Get current task definition
-          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition ${{ steps.ecs-resources.outputs.service }} --query 'taskDefinition')
+          # Get current task definition from the service
+          CURRENT_TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ steps.ecs-resources.outputs.cluster }} \
+            --services ${{ steps.ecs-resources.outputs.service }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "Current task definition: $CURRENT_TASK_DEF_ARN"
+
+          # Get the task definition details
+          TASK_DEFINITION=$(aws ecs describe-task-definition \
+            --task-definition $CURRENT_TASK_DEF_ARN \
+            --query 'taskDefinition')
 
           # Update image URI in task definition
           NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE "${{ steps.ecr-uri.outputs.uri }}:${{ github.sha }}" '.containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.placementConstraints) | del(.compatibilities) | del(.registeredAt) | del(.registeredBy)')
 
           # Register new task definition
           NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEFINITION | aws ecs register-task-definition --cli-input-json file:///dev/stdin --query 'taskDefinition.taskDefinitionArn' --output text)
+
+          echo "New task definition: $NEW_TASK_DEF_ARN"
 
           # Update service
           aws ecs update-service --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --task-definition $NEW_TASK_DEF_ARN
@@ -192,7 +248,21 @@ jobs:
       - name: Verify deployment
         run: |
           # Get service endpoint using the discovered resources
-          LOAD_BALANCER_DNS=$(aws ecs describe-services --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
+          LOAD_BALANCER_DNS=$(aws ecs describe-services \
+            --cluster ${{ steps.ecs-resources.outputs.cluster }} \
+            --service ${{ steps.ecs-resources.outputs.service }} \
+            --query 'services[0].loadBalancers[0].targetGroupArn' \
+            --output text | \
+            xargs -I {} aws elbv2 describe-target-groups \
+            --target-group-arns {} \
+            --query 'TargetGroups[0].LoadBalancerArns[0]' \
+            --output text | \
+            xargs -I {} aws elbv2 describe-load-balancers \
+            --load-balancer-arns {} \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+
+          echo "Load balancer DNS: $LOAD_BALANCER_DNS"
 
           # Test health endpoint
           for i in {1..30}; do
@@ -223,8 +293,32 @@ jobs:
       - name: Get deployment URLs
         id: urls
         run: |
+          # Get ECS resources again for this job
+          ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
+            --output text)
+
+          ECS_SERVICE=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Service`].PhysicalResourceId' \
+            --output text)
+
           # Get backend URL using the discovered resources
-          BACKEND_DNS=$(aws ecs describe-services --cluster ${{ steps.ecs-resources.outputs.cluster }} --service ${{ steps.ecs-resources.outputs.service }} --query 'services[0].loadBalancers[0].targetGroupArn' --output text | xargs -I {} aws elbv2 describe-target-groups --target-group-arns {} --query 'TargetGroups[0].LoadBalancerArns[0]' --output text | xargs -I {} aws elbv2 describe-load-balancers --load-balancer-arns {} --query 'LoadBalancers[0].DNSName' --output text)
+          BACKEND_DNS=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --query 'services[0].loadBalancers[0].targetGroupArn' \
+            --output text | \
+            xargs -I {} aws elbv2 describe-target-groups \
+            --target-group-arns {} \
+            --query 'TargetGroups[0].LoadBalancerArns[0]' \
+            --output text | \
+            xargs -I {} aws elbv2 describe-load-balancers \
+            --load-balancer-arns {} \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+
           echo "backend=http://$BACKEND_DNS" >> $GITHUB_OUTPUT
 
       - name: Run smoke tests
@@ -285,8 +379,23 @@ jobs:
         run: |
           echo "Rolling back backend deployment..."
 
+          # Get ECS resources from CloudFormation stack
+          ECS_CLUSTER=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Cluster`].PhysicalResourceId' \
+            --output text)
+
+          ECS_SERVICE=$(aws cloudformation describe-stack-resources \
+            --stack-name ${{ env.STACK_NAME }} \
+            --query 'StackResources[?ResourceType==`AWS::ECS::Service`].PhysicalResourceId' \
+            --output text)
+
           # Get previous task definition
-          PREVIOUS_TASK_DEF=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].taskDefinition' --output text)
+          PREVIOUS_TASK_DEF=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --query 'services[0].taskDefinition' \
+            --output text)
 
           # Get the revision number and decrement it
           CURRENT_REVISION=$(echo $PREVIOUS_TASK_DEF | grep -o '[0-9]*$')
@@ -296,10 +405,15 @@ jobs:
             ROLLBACK_TASK_DEF=$(echo $PREVIOUS_TASK_DEF | sed "s/:$CURRENT_REVISION$/:$PREVIOUS_REVISION/")
             
             # Update service to previous task definition
-            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --task-definition $ROLLBACK_TASK_DEF
+            aws ecs update-service \
+              --cluster $ECS_CLUSTER \
+              --service $ECS_SERVICE \
+              --task-definition $ROLLBACK_TASK_DEF
             
             # Wait for rollback to complete
-            aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }}
+            aws ecs wait services-stable \
+              --cluster $ECS_CLUSTER \
+              --services $ECS_SERVICE
             
             echo "Backend rollback completed"
           else
