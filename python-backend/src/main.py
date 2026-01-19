@@ -116,24 +116,14 @@ def create_app() -> FastAPI:
         """Initialize database and other services on startup."""
         logger.info("Starting Noah Reading Agent...")
 
-        # Create database tables - don't fail startup if DB is unavailable
-        # This allows health checks to pass while DB connections retry
-        try:
-            Base.metadata.create_all(bind=engine)
-            logger.info("Database tables created successfully")
-
-            # Log registered models
-            registered_models = [
-                UserProfile.__name__, ReadingBehavior.__name__, PreferenceSnapshot.__name__,
-                ContentItem.__name__, DiscoveryRecommendation.__name__,
-                ConversationSession.__name__, ConversationMessage.__name__, ConversationHistory.__name__
-            ]
-            logger.info(f"Registered models: {', '.join(registered_models)}")
-            
-        except Exception as e:
-            logger.error(f"Error creating database tables: {e}")
-            logger.warning("Application starting without database connection. DB operations will fail until connection is established.")
-            # Don't raise - allow app to start for health checks
+        # Log registered models for reference
+        registered_models = [
+            UserProfile.__name__, ReadingBehavior.__name__, PreferenceSnapshot.__name__,
+            ContentItem.__name__, DiscoveryRecommendation.__name__,
+            ConversationSession.__name__, ConversationMessage.__name__, ConversationHistory.__name__
+        ]
+        logger.info(f"Registered models: {', '.join(registered_models)}")
+        logger.info("Database tables managed by Alembic migrations. Run 'alembic upgrade head' to ensure schema is up to date.")
 
         # Initialize and log Strands agents configuration
         try:
