@@ -116,11 +116,15 @@ class EnhancedConversationService:
             chunk_sequence = 0  # Add sequence counter for deduplication
 
             try:
+                # Extract language from session context
+                language = session.context.get("preferred_language", "english") if session.context else "english"
+                
                 async for chunk in self.strands_service.stream_conversation(
                     user_message=user_message,
                     user_id=user_id,
                     conversation_context=session.context,
-                    metadata=metadata
+                    metadata=metadata,
+                    language=language
                 ):
                     if chunk["type"] == "content_chunk":
                         # Accumulate content first

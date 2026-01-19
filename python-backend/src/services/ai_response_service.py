@@ -49,8 +49,11 @@ class AIResponseService:
     ) -> str:
         """Generate a conversational response using AI."""
         try:
+            # Extract language from context
+            language = context.get("preferred_language", "english")
+            
             # Build system prompt for Noah's personality
-            system_prompt = self._build_noah_system_prompt()
+            system_prompt = self._build_noah_system_prompt(language)
             
             # Build context-aware user prompt
             user_prompt = self._build_contextual_prompt(
@@ -66,11 +69,12 @@ class AIResponseService:
             if self.has_ai and self.openai_client:
                 return await self._generate_openai_response(system_prompt, user_prompt)
             else:
-                return self._generate_fallback_response(user_message, intent)
+                return self._generate_fallback_response(user_message, intent, language)
                 
         except Exception as e:
             logger.error(f"Error generating AI response: {e}")
-            return self._generate_fallback_response(user_message, intent)
+            language = context.get("preferred_language", "english")
+            return self._generate_fallback_response(user_message, intent, language)
 
     async def generate_streaming_response(
         self,
@@ -83,8 +87,11 @@ class AIResponseService:
     ) -> AsyncGenerator[str, None]:
         """Generate a streaming conversational response using AI."""
         try:
+            # Extract language from context
+            language = context.get("preferred_language", "english")
+            
             # Build system prompt for Noah's personality
-            system_prompt = self._build_noah_system_prompt()
+            system_prompt = self._build_noah_system_prompt(language)
             
             # Build context-aware user prompt
             user_prompt = self._build_contextual_prompt(
@@ -102,7 +109,8 @@ class AIResponseService:
                     yield chunk
             else:
                 # Fallback to non-streaming response
-                response = self._generate_fallback_response(user_message, intent)
+                language = context.get("preferred_language", "english")
+                response = self._generate_fallback_response(user_message, intent, language)
                 # Simulate streaming by yielding words
                 words = response.split()
                 for i, word in enumerate(words):
@@ -115,9 +123,42 @@ class AIResponseService:
             # Instead, let the caller handle the error appropriately
             raise
 
-    def _build_noah_system_prompt(self) -> str:
+    def _build_noah_system_prompt(self, language: str = "english") -> str:
         """Build Noah's personality and behavior system prompt."""
-        return """You are Noah, an intelligent and enthusiastic reading companion. Your personality traits:
+        if language == "japanese":
+            return """あなたはノア（Noah）です。知的で熱心な読書の友達です。あなたの性格的特徴：
+
+性格：
+- 温かく、親しみやすく、本と読書に対して心から興奮している
+- 知識豊富だが、決して見下したり圧倒したりしない
+- すべての読書レベルと好みをサポートする
+- ユーザーの好みや読書目標に好奇心を持つ
+- 読書の旅路について励ましと前向きさを持つ
+
+会話スタイル：
+- 自然で会話的な言葉遣いを使う
+- 好みをより良く理解するために思慮深いフォローアップ質問をする
+- 心からの熱意を持って推薦を説明する
+- 関連する場合は以前の会話を覚えて参照する
+- 簡潔だが魅力的に - 過度に長い回答は避ける
+
+主な責任：
+1. ユーザーの好みに基づいてパーソナライズされた本の推薦を提供する
+2. 「発見モード」を通じて新しいジャンルや著者を発見する手助けをする
+3. フィードバックを処理して将来の推薦を改善する
+4. 本、読書、文学について魅力的な会話を維持する
+5. レベルに関係なくユーザーの読書の旅をサポートする
+
+回答ガイドライン：
+- 常にノアのキャラクターとして回答する
+- 推薦をする際は、なぜユーザーがその本を楽しめると思うかを説明する
+- 読書目標と進歩について励ます
+- 特定の本の情報がない場合は、ユーザーが探しているものを説明する手助けに焦点を当てる
+- 会話的な回答を保ち、過度にフォーマルやロボット的になることを避ける
+
+覚えておいて：あなたは単に情報を提供するだけではありません - あなたはユーザーが次の素晴らしい読書を見つけることを心から気にかけるサポート的な読書の友達なのです。"""
+        else:
+            return """You are Noah, an intelligent and enthusiastic reading companion. Your personality traits:
 
 PERSONALITY:
 - Warm, friendly, and genuinely excited about books and reading
@@ -281,21 +322,34 @@ Remember: You're not just providing information - you're being a supportive read
             logger.error(f"Error generating OpenAI streaming response: {e}")
             raise
 
-    def _generate_fallback_response(self, user_message: str, intent: Dict[str, Any]) -> str:
+    def _generate_fallback_response(self, user_message: str, intent: Dict[str, Any], language: str = "english") -> str:
         """Generate fallback response when AI services are unavailable."""
         intent_type = intent.get("intent", "general_conversation")
         
-        fallback_responses = {
-            "book_recommendation": "I'd love to help you find your next great read! What genres or topics are you interested in? Are you looking for something light and fun, or perhaps something more thought-provoking?",
-            
-            "discovery_mode": "How exciting - let's explore something completely new! I'll help you discover books outside your usual preferences. This is one of my favorite things to do - finding hidden gems that surprise readers!",
-            
-            "feedback": "Thank you so much for sharing your thoughts! Your feedback helps me understand your preferences better. Tell me more about what you liked or didn't like - it really helps me make better recommendations for you.",
-            
-            "purchase_inquiry": "I understand you're interested in getting that book! While I can't generate purchase links directly, I'd be happy to help you find more information about it or suggest similar books you might enjoy.",
-            
-            "general_conversation": "Hi there! I'm Noah, your reading companion, and I'm absolutely thrilled to help you discover amazing books! Whether you're looking for your next favorite novel, want to explore a new genre, or just want to chat about books, I'm here for you. What's on your reading mind today?"
-        }
+        if language == "japanese":
+            fallback_responses = {
+                "book_recommendation": "あなたの次の素晴らしい読書を見つけるお手伝いをしたいです！どのようなジャンルやトピックに興味がありますか？軽くて楽しいもの、それともより考えさせられるものをお探しですか？",
+                
+                "discovery_mode": "わくわくしますね - 全く新しいものを探検しましょう！あなたの普段の好みとは違う本を発見するお手伝いをします。これは私の大好きなことの一つです - 読者を驚かせる隠れた名作を見つけることです！",
+                
+                "feedback": "あなたの感想をシェアしていただき、ありがとうございます！あなたのフィードバックは、あなたの好みをより良く理解するのに役立ちます。好きだったことや好きではなかったことについてもっと教えてください - それは私があなたにより良い推薦をするのに本当に役立ちます。",
+                
+                "purchase_inquiry": "その本に興味を持っていただいているのですね！直接購入リンクを生成することはできませんが、その本についてより多くの情報を見つけたり、あなたが楽しめそうな似たような本を提案したりするお手伝いをさせていただきます。",
+                
+                "general_conversation": "こんにちは！私はノア、あなたの読書の友達です。素晴らしい本を発見するお手伝いができることを心から嬉しく思います！次のお気に入りの小説を探している、新しいジャンルを探求したい、または単に本について話したいなど、私はあなたのためにここにいます。今日はどのような読書のことを考えていますか？"
+            }
+        else:
+            fallback_responses = {
+                "book_recommendation": "I'd love to help you find your next great read! What genres or topics are you interested in? Are you looking for something light and fun, or perhaps something more thought-provoking?",
+                
+                "discovery_mode": "How exciting - let's explore something completely new! I'll help you discover books outside your usual preferences. This is one of my favorite things to do - finding hidden gems that surprise readers!",
+                
+                "feedback": "Thank you so much for sharing your thoughts! Your feedback helps me understand your preferences better. Tell me more about what you liked or didn't like - it really helps me make better recommendations for you.",
+                
+                "purchase_inquiry": "I understand you're interested in getting that book! While I can't generate purchase links directly, I'd be happy to help you find more information about it or suggest similar books you might enjoy.",
+                
+                "general_conversation": "Hi there! I'm Noah, your reading companion, and I'm absolutely thrilled to help you discover amazing books! Whether you're looking for your next favorite novel, want to explore a new genre, or just want to chat about books, I'm here for you. What's on your reading mind today?"
+            }
         
         return fallback_responses.get(intent_type, fallback_responses["general_conversation"])
 
@@ -340,31 +394,50 @@ Return as JSON with keys: template1, template2, template3"""
                     pass
             
             # Fallback templates
-            return self._get_fallback_templates(intent_type)
+            return self._get_fallback_templates(intent_type, context.get("preferred_language", "english"))
             
         except Exception as e:
             logger.error(f"Error generating contextual templates: {e}")
-            return self._get_fallback_templates(intent_type)
+            return self._get_fallback_templates(intent_type, context.get("preferred_language", "english"))
 
-    def _get_fallback_templates(self, intent_type: str) -> Dict[str, str]:
+    def _get_fallback_templates(self, intent_type: str, language: str = "english") -> Dict[str, str]:
         """Get fallback response templates."""
-        templates = {
-            "book_recommendation": {
-                "template1": "I'm excited to help you find your next great read! Based on what you've told me, I think you might really enjoy {book_title} by {author}. {reason}",
-                "template2": "Oh, I have the perfect suggestion for you! {book_title} by {author} sounds like exactly what you're looking for. {reason}",
-                "template3": "Let me recommend {book_title} by {author} - I think this could be your next favorite book! {reason}"
-            },
-            "discovery_mode": {
-                "template1": "Time for an adventure! Let's try something completely different - {book_title} by {author}. It's outside your usual preferences, but {reason}",
-                "template2": "I love discovery mode! Here's something that might surprise you: {book_title} by {author}. {reason}",
-                "template3": "Ready to explore? {book_title} by {author} is quite different from what you usually read, but {reason}"
-            },
-            "general_conversation": {
-                "template1": "I'm so glad you're here! As your reading companion, I'm excited to help you discover amazing books. What kind of reading adventure are we going on today?",
-                "template2": "Hello! I'm Noah, and I absolutely love helping people find their perfect next read. Tell me, what's caught your reading interest lately?",
-                "template3": "Welcome! There's nothing I enjoy more than connecting readers with books they'll love. What can I help you discover today?"
+        if language == "japanese":
+            templates = {
+                "book_recommendation": {
+                    "template1": "あなたの次の素晴らしい読書を見つけるお手伝いができて嬉しいです！あなたが教えてくれたことに基づいて、{author}の{book_title}を本当に楽しめると思います。{reason}",
+                    "template2": "ああ、あなたにぴったりの提案があります！{author}の{book_title}は、まさにあなたが探しているもののようです。{reason}",
+                    "template3": "{author}の{book_title}をお勧めします - これがあなたの次のお気に入りの本になるかもしれません！{reason}"
+                },
+                "discovery_mode": {
+                    "template1": "冒険の時間です！全く違うものを試してみましょう - {author}の{book_title}です。あなたの普段の好みとは違いますが、{reason}",
+                    "template2": "発見モードが大好きです！あなたを驚かせるかもしれないものがあります：{author}の{book_title}です。{reason}",
+                    "template3": "探検の準備はできていますか？{author}の{book_title}は、あなたが普段読むものとはかなり違いますが、{reason}"
+                },
+                "general_conversation": {
+                    "template1": "ここにいてくださって嬉しいです！あなたの読書の友達として、素晴らしい本を発見するお手伝いができることを嬉しく思います。今日はどのような読書の冒険に出かけましょうか？",
+                    "template2": "こんにちは！私はノアです。人々が完璧な次の読書を見つけるお手伝いをすることが大好きです。最近、どのようなことが読書の興味を引いていますか？",
+                    "template3": "いらっしゃいませ！読者を彼らが愛する本と結びつけることほど楽しいことはありません。今日は何を発見するお手伝いができますか？"
+                }
             }
-        }
+        else:
+            templates = {
+                "book_recommendation": {
+                    "template1": "I'm excited to help you find your next great read! Based on what you've told me, I think you might really enjoy {book_title} by {author}. {reason}",
+                    "template2": "Oh, I have the perfect suggestion for you! {book_title} by {author} sounds like exactly what you're looking for. {reason}",
+                    "template3": "Let me recommend {book_title} by {author} - I think this could be your next favorite book! {reason}"
+                },
+                "discovery_mode": {
+                    "template1": "Time for an adventure! Let's try something completely different - {book_title} by {author}. It's outside your usual preferences, but {reason}",
+                    "template2": "I love discovery mode! Here's something that might surprise you: {book_title} by {author}. {reason}",
+                    "template3": "Ready to explore? {book_title} by {author} is quite different from what you usually read, but {reason}"
+                },
+                "general_conversation": {
+                    "template1": "I'm so glad you're here! As your reading companion, I'm excited to help you discover amazing books. What kind of reading adventure are we going on today?",
+                    "template2": "Hello! I'm Noah, and I absolutely love helping people find their perfect next read. Tell me, what's caught your reading interest lately?",
+                    "template3": "Welcome! There's nothing I enjoy more than connecting readers with books they'll love. What can I help you discover today?"
+                }
+            }
         
         return templates.get(intent_type, templates["general_conversation"])
 

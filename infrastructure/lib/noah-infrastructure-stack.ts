@@ -215,6 +215,15 @@ export class NoahInfrastructureStack extends cdk.Stack {
           // Proxy configuration for ALB/CloudFront
           TRUSTED_HOSTS: '*',
           PROXY_HEADERS_ENABLED: 'true',
+          
+          // Strands Agents Configuration
+          STRANDS_ENABLED: 'true',
+          STRANDS_AGENT_MODEL: 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+          STRANDS_STREAMING_ENABLED: 'true',
+          
+          // OpenTelemetry Configuration
+          OPENTELEMETRY_ENABLED: 'false',
+          OPENTELEMETRY_SERVICE_NAME: 'noah-reading-agent',
         },
         secrets: {
           DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(database.secret!, 'password'),

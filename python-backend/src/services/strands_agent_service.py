@@ -31,10 +31,19 @@ class StrandsAgentService:
         # Create tool functions
         self._create_tools()
         
-        # Initialize the main Noah agent
-        self.noah_agent = self._create_noah_agent()
+        # Initialize the main Noah agent (default to English)
+        self.noah_agent = self._create_noah_agent("english")
+        self.current_language = "english"
         
         logger.info("Strands Agent Service initialized")
+
+    def get_agent_for_language(self, language: str = "english") -> Agent:
+        """Get the Noah agent for the specified language, creating if needed."""
+        if language != self.current_language:
+            logger.info(f"Switching agent language from {self.current_language} to {language}")
+            self.noah_agent = self._create_noah_agent(language)
+            self.current_language = language
+        return self.noah_agent
 
     def _create_tools(self):
         """Create tool functions for the agent."""
@@ -182,10 +191,36 @@ class StrandsAgentService:
         self.process_feedback = process_feedback
         self.analyze_content = analyze_content
 
-    def _create_noah_agent(self) -> Agent:
+    def _create_noah_agent(self, language: str = "english") -> Agent:
         """Create the main Noah reading agent with Strands framework."""
         
-        system_prompt = """You are Noah, an intelligent and friendly reading companion. Your role is to:
+        if language == "japanese":
+            system_prompt = """あなたはノア（Noah）です。知的で親しみやすい読書の友達です。あなたの役割は：
+
+1. パーソナライズされた推薦を通じて、ユーザーが愛する本を発見する手助けをする
+2. 彼らの読書の好みを理解し、時間とともに適応する
+3. 読書の視野を広げる「発見モード」の提案を提供する
+4. フィードバックを処理して将来の推薦を改善する
+5. 本と読書について魅力的で自然な会話を維持する
+
+主な性格的特徴：
+- 本と読書に対して熱心
+- 知識豊富だが圧倒的ではない
+- すべての読書レベルと好みをサポート
+- ユーザーの好みと読書目標に好奇心を持つ
+- どのような状況でも適切な本を見つけるのに役立つ
+
+常に会話的で親しみやすい口調で回答してください。推薦をする際は、なぜユーザーがその本を楽しめると思うかを説明してください。彼らの読書の旅路を励まし、サポートしてください。
+
+ユーザーを助けるためのいくつかのツールにアクセスできます：
+- get_recommendations: パーソナライズされた本の推薦を取得
+- discovery_mode: 普段の好みとは違う本を見つける
+- process_feedback: 推薦に対するユーザーフィードバックを処理
+- analyze_content: 推薦のために本の内容を分析
+
+最高の読書支援を提供するために、適切な場合にこれらのツールを使用してください。"""
+        else:
+            system_prompt = """You are Noah, an intelligent and friendly reading companion. Your role is to:
 
 1. Help users discover books they'll love through personalized recommendations
 2. Understand their reading preferences and adapt over time
@@ -350,10 +385,14 @@ Use these tools when appropriate to provide the best possible reading assistance
         user_message: str,
         user_id: str,
         conversation_context: Optional[Dict] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        language: str = "english"
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream a conversation response using Strands agent."""
         try:
+            # Get the appropriate agent for the language
+            agent = self.get_agent_for_language(language)
+            
             # Prepare context for the agent
             context_message = f"User ID: {user_id}\n"
             if conversation_context:
@@ -368,7 +407,7 @@ Use these tools when appropriate to provide the best possible reading assistance
             duplicate_threshold = 0.1  # 100ms threshold for duplicate detection
             
             # Create and use the stream generator with safe context management
-            stream_generator = self.noah_agent.stream_async(context_message)
+            stream_generator = agent.stream_async(context_message)
             
             async with self._safe_stream_context(stream_generator) as safe_stream:
                 try:

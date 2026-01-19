@@ -66,6 +66,8 @@ class DiscoveryModeEngine:
         Returns:
             List of discovery recommendation dictionaries
         """
+        import time
+        start_time = time.time()
         logger.info(f"Generating discovery recommendations for user {user_id}")
 
         if not db:
@@ -74,37 +76,45 @@ class DiscoveryModeEngine:
 
         try:
             # Get user profile and reading history
+            profile_start = time.time()
             profile = await user_profile_engine.get_or_create_profile(user_id, db)
             preferences = PreferenceModel(**profile.preferences)
             reading_levels = LanguageReadingLevels(**profile.reading_levels)
+            logger.info(f"Profile retrieval took {time.time() - profile_start:.2f}s")
 
             # Analyze user's established preferences
+            patterns_start = time.time()
             user_patterns = await self._analyze_user_patterns(user_id, preferences, db)
+            logger.info(f"Pattern analysis took {time.time() - patterns_start:.2f}s")
 
             # Get discovery candidates
+            candidates_start = time.time()
             candidates = await self._get_discovery_candidates(
                 user_id, user_patterns, language, reading_levels, db
             )
+            logger.info(f"Candidate retrieval took {time.time() - candidates_start:.2f}s, found {len(candidates)} candidates")
 
             if not candidates:
                 logger.warning(
                     f"No discovery candidates found for user {user_id}")
                 return []
 
-            # Score candidates for discovery potential
-            discovery_recommendations = []
-            for content in candidates:
+            # Score candidates for discovery potential (parallelized)
+            scoring_start = time.time()
+            import asyncio
+            
+            async def score_candidate(content):
                 discovery_data = await self._calculate_discovery_score(
                     content, user_patterns, preferences, reading_levels, user_id, db
                 )
-
+                
                 if discovery_data["divergence_score"] >= self.min_divergence_score:
                     # Store discovery recommendation for tracking
                     await self._store_discovery_recommendation(
                         user_id, content.id, discovery_data, db
                     )
-
-                    discovery_recommendations.append({
+                    
+                    return {
                         "content_id": content.id,
                         "title": content.title,
                         "language": content.language,
@@ -115,13 +125,36 @@ class DiscoveryModeEngine:
                         "discovery_reason": discovery_data["discovery_reason"],
                         "accessibility_score": discovery_data["accessibility_score"],
                         "serendipity_factors": discovery_data["serendipity_factors"]
-                    })
+                    }
+                return None
+            
+            # Process candidates in parallel batches of 10 to avoid overwhelming the database
+            batch_size = 10
+            discovery_recommendations = []
+            
+            for i in range(0, len(candidates), batch_size):
+                batch = candidates[i:i + batch_size]
+                batch_results = await asyncio.gather(
+                    *[score_candidate(content) for content in batch],
+                    return_exceptions=True
+                )
+                
+                # Filter out None results and exceptions
+                for result in batch_results:
+                    if result is not None and not isinstance(result, Exception):
+                        discovery_recommendations.append(result)
+            
+            logger.info(f"Scoring took {time.time() - scoring_start:.2f}s, generated {len(discovery_recommendations)} recommendations")
 
             # Apply serendipity filtering and ranking
+            ranking_start = time.time()
             final_recommendations = self._rank_discovery_recommendations(
                 discovery_recommendations, limit
             )
-
+            logger.info(f"Ranking took {time.time() - ranking_start:.2f}s")
+            
+            total_time = time.time() - start_time
+            logger.info(f"Total discovery recommendation generation took {total_time:.2f}s for user {user_id}")
             logger.info(
                 f"Generated {len(final_recommendations)} discovery recommendations for user {user_id}")
             return final_recommendations
@@ -250,8 +283,8 @@ class DiscoveryModeEngine:
         # Require analysis data
         query = query.filter(ContentItem.analysis.isnot(None))
 
-        # Get candidates
-        candidates = query.limit(200).all()
+        # Get candidates with optimized limit
+        candidates = query.limit(50).all()  # Reduced from 200 to 50 for better performance
 
         # Filter for discovery potential
         discovery_candidates = []
@@ -311,14 +344,30 @@ class DiscoveryModeEngine:
         analysis = ContentAnalysis(**content.analysis)
 
         if content.language == "english":
-            user_level = reading_levels.english.get("level", 8.0)
+            user_level_data = reading_levels.english.get("level", "intermediate")
+            # Convert level names to numeric values
+            level_mapping = {
+                "beginner": 5.0,
+                "intermediate": 8.0,
+                "advanced": 12.0,
+                "expert": 16.0
+            }
+            user_level = level_mapping.get(user_level_data, 8.0)
             content_level = analysis.reading_level.get("flesch_kincaid", 8.0)
 
             # Allow slightly more challenging content for discovery
             return content_level <= user_level + 3.0
 
         elif content.language == "japanese":
-            user_level = reading_levels.japanese.get("level", 0.3)
+            user_level_data = reading_levels.japanese.get("level", "intermediate")
+            # Convert level names to numeric values
+            level_mapping = {
+                "beginner": 0.1,
+                "intermediate": 0.3,
+                "advanced": 0.5,
+                "expert": 0.7
+            }
+            user_level = level_mapping.get(user_level_data, 0.3)
             content_level = analysis.reading_level.get("kanji_density", 0.3)
 
             return content_level <= user_level + 0.3
@@ -516,11 +565,19 @@ class DiscoveryModeEngine:
         """Calculate serendipitous connection factors."""
         factors = {}
 
-        # Collaborative filtering serendipity
-        similar_users = await self._find_users_with_similar_content(content.id, user_id, db)
-        if similar_users:
-            factors["collaborative_discovery"] = len(similar_users)
-            factors["similar_user_count"] = len(similar_users)
+        # Collaborative filtering serendipity - optimized with single query
+        try:
+            similar_users_count = db.query(ReadingBehavior).filter(
+                ReadingBehavior.content_id == content.id,
+                ReadingBehavior.user_id != user_id
+            ).count()
+            
+            if similar_users_count > 0:
+                factors["collaborative_discovery"] = similar_users_count
+                factors["similar_user_count"] = similar_users_count
+        except Exception as e:
+            logger.warning(f"Error calculating collaborative serendipity: {e}")
+            factors["similar_user_count"] = 0
 
         # Temporal serendipity (trending or recently added)
         days_since_added = (datetime.utcnow() - content.created_at).days
@@ -528,9 +585,16 @@ class DiscoveryModeEngine:
             factors["recently_added"] = True
 
         # Popularity serendipity (not too popular, not too obscure)
-        read_count = db.query(ReadingBehavior).filter(
-            ReadingBehavior.content_id == content.id
-        ).count()
+        # Use cached read count if available, otherwise query
+        read_count = getattr(content, '_cached_read_count', None)
+        if read_count is None:
+            try:
+                read_count = db.query(ReadingBehavior).filter(
+                    ReadingBehavior.content_id == content.id
+                ).count()
+            except Exception as e:
+                logger.warning(f"Error calculating read count: {e}")
+                read_count = 0
 
         if 5 <= read_count <= 50:  # Sweet spot for serendipity
             factors["optimal_popularity"] = True
