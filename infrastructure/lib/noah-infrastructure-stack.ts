@@ -8,7 +8,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import * as cognito from 'aws-cdk-lib/aws-cognito'
 import * as iam from 'aws-cdk-lib/aws-iam'
-import * as logs from 'aws-cdk-lib/aws-logs'
+
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
@@ -539,9 +539,9 @@ export class NoahInfrastructureStack extends cdk.Stack {
       description: 'S3 bucket for content storage',
     })
 
-    new cdk.CfnOutput(this, 'BastionHostPublicIP', {
-      value: bastionHost.instancePublicIp,
-      description: 'Bastion Host Public IP for database access',
+    new cdk.CfnOutput(this, 'BastionHostPublicDNS', {
+      value: bastionHost.instancePublicDnsName,
+      description: 'Bastion Host Public DNS for database access',
     })
 
     new cdk.CfnOutput(this, 'BastionHostInstanceId', {
